@@ -1,0 +1,176 @@
+# %% [markdown]
+# # Parsec — тест подключения
+
+# %%
+import httpx
+from lxml import etree
+import textwrap
+
+# ── Параметры ─────────────────────────────────────────────────────────────────
+HOST     = "192.168.1.50"   # <-- поменяй на реальный IP
+DOMAIN   = "SYSTEM"
+USERNAME = "parsec"
+PASSWORD = "parsec"
+
+BASE_URL = f"http://{HOST}:10101/IntegrationService/IntegrationService.asmx"
+NS_PARSEC = "http://parsec.ru/Parsec3IntergationService"
+NS_SOAP   = "http://schemas.xmlsoap.org/soap/envelope/"
+
+
+# %% [markdown]
+# ## 1. Проверка TCP-соединения (до SOAP)
+
+# %%
+import socket
+
+def check_port(host, port=10101, timeout=5):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            print(f"✓ TCP {host}:{port} — порт открыт")
+            return True
+    except socket.timeout:
+        print(f"✗ TCP {host}:{port} — таймаут (хост недоступен или порт закрыт фаерволом)")
+        return False
+    except ConnectionRefusedError:
+        print(f"✗ TCP {host}:{port} — соединение отклонено (порт закрыт)")
+        return False
+    except Exception as e:
+        print(f"✗ TCP {host}:{port} — ошибка: {e}")
+        return False
+
+check_port(HOST)
+
+
+# %% [markdown]
+# ## 2. Сырой SOAP-запрос OpenSession — смотрим что реально летит
+
+# %%
+def make_envelope(method: str, body_inner: str) -> bytes:
+    xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope
+    xmlns:soap="{NS_SOAP}"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <soap:Body>
+    <{method} xmlns="{NS_PARSEC}">
+{textwrap.indent(body_inner.strip(), "      ")}
+    </{method}>
+  </soap:Body>
+</soap:Envelope>"""
+    return xml.encode("utf-8")
+
+
+payload = make_envelope("OpenSession", f"""
+<domain>{DOMAIN}</domain>
+<userName>{USERNAME}</userName>
+<password>{PASSWORD}</password>
+""")
+
+print("=== Отправляемый XML ===")
+print(payload.decode("utf-8"))
+
+
+# %% [markdown]
+# ## 3. Отправка — смотрим сырой ответ
+
+# %%
+try:
+    resp = httpx.post(
+        BASE_URL,
+        content=payload,
+        headers={
+            "Content-Type": "text/xml; charset=utf-8",
+            "SOAPAction": f'"{NS_PARSEC}/OpenSession"',
+        },
+        timeout=15,
+    )
+    print(f"HTTP статус: {resp.status_code}")
+    print(f"\n=== Сырой ответ ===")
+    print(resp.text)
+except Exception as e:
+    print(f"✗ Ошибка запроса: {type(e).__name__}: {e}")
+
+
+# %% [markdown]
+# ## 4. Парсим SessionID из ответа
+
+# %%
+def extract_session_id(response_text: str):
+    try:
+        root = etree.fromstring(response_text.encode("utf-8"))
+    except Exception as e:
+        print(f"✗ XML не распарсился: {e}")
+        return None
+
+    # Ищем все теги по всему дереву — не зависим от namespace
+    all_tags = {etree.QName(el.tag).localname: el for el in root.iter()}
+    print("\n=== Все теги в ответе ===")
+    for name, el in all_tags.items():
+        if el.text and el.text.strip():
+            print(f"  <{name}> = {el.text.strip()[:80]}")
+
+    # Пробуем достать SessionID
+    session_el = all_tags.get("SessionID")
+    result_el  = all_tags.get("Result")
+    error_el   = all_tags.get("ErrorMessage")
+
+    if result_el is not None:
+        print(f"\nResult: {result_el.text}")
+    if error_el is not None and error_el.text:
+        print(f"ErrorMessage: {error_el.text}")
+    if session_el is not None and session_el.text:
+        print(f"\n✓ SessionID: {session_el.text.strip()}")
+        return session_el.text.strip()
+    else:
+        print("\n✗ SessionID не найден")
+        return None
+
+session_id = extract_session_id(resp.text)
+
+
+# %% [markdown]
+# ## 5. Тест одного метода — GetOrgUnitsHierarhy
+
+# %%
+if session_id:
+    payload2 = make_envelope("GetOrgUnitsHierarhy", f"""
+<sessionID>{session_id}</sessionID>
+""")
+    try:
+        resp2 = httpx.post(
+            BASE_URL,
+            content=payload2,
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": f'"{NS_PARSEC}/GetOrgUnitsHierarhy"',
+            },
+            timeout=15,
+        )
+        print(f"HTTP статус: {resp2.status_code}")
+        print(f"\n=== Ответ (первые 2000 символов) ===")
+        print(resp2.text[:2000])
+    except Exception as e:
+        print(f"✗ {type(e).__name__}: {e}")
+else:
+    print("Пропускаем — сессия не открыта.")
+
+
+# %% [markdown]
+# ## 6. Закрываем сессию
+
+# %%
+if session_id:
+    payload3 = make_envelope("CloseSession", f"""
+<sessionID>{session_id}</sessionID>
+""")
+    resp3 = httpx.post(
+        BASE_URL,
+        content=payload3,
+        headers={
+            "Content-Type": "text/xml; charset=utf-8",
+            "SOAPAction": f'"{NS_PARSEC}/CloseSession"',
+        },
+        timeout=10,
+    )
+    print(f"CloseSession HTTP: {resp3.status_code}")
+    print(resp3.text)
