@@ -1,0 +1,787 @@
+# %% [markdown]
+# # Parsec ACS — выгрузка данных пропускного режима
+# httpx + lxml, без zeep, без f-строк
+
+# %% [markdown]
+# ## 0. Зависимости
+# pip install httpx lxml pandas openpyxl
+
+# %% [markdown]
+# ## 1. Конфигурация
+
+# %%
+from datetime import datetime, timezone, timedelta
+
+CONNECTION = {
+    "host_addr":    "192.168.1.50",   # IP сервера ParsecNET
+    "organization": "SYSTEM",
+    "username":     "parsec",
+    "password":     "parsec",
+    "timeout":      30,
+}
+
+DATE_FROM = datetime(2024,  1,  1, tzinfo=timezone.utc)
+DATE_TO   = datetime(2024, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+TRANSACTION_TYPES = [590144, 590145, 590152, 590153, 590146, 590244, 590245]
+
+MAX_RESULT_SIZE       = 10000000
+CHUNK_SIZE            = 500
+LOCAL_TZ_OFFSET_HOURS = 3
+
+EVENT_FIELDS = {
+    "2c5ee108-28e3-4dcc-8c95-7f3222d8e67f": "event_datetime",
+    "57ca38e4-ed6f-4d12-adcb-2faa16f950d7": "transaction_code",
+    "d1847aff-11aa-4ef2-aaaa-795ceefe5f9f": "transaction_name",
+    "633904b5-971b-4751-96a0-92dc03d5f616": "territory_name",
+    "4c5807cb-2c06-4725-9243-747e40c41d6c": "zone_name",
+    "7c6d82a0-c8c8-495b-9728-357807193d23": "person_id",
+    "1bf8a893-7d21-4c0c-9a2d-2e333a2d769d": "person_fullname",
+    "0de358e0-c91b-4333-b902-000000000003": "person_lastname",
+    "0de358e0-c91b-4333-b902-000000000001": "person_firstname",
+    "0de358e0-c91b-4333-b902-000000000004": "department",
+    "0de358e0-c91b-4333-b902-000000000006": "tab_number",
+    "0de358e0-c91b-4333-b902-000000000005": "card_code",
+}
+
+FIELD_GUIDS   = list(EVENT_FIELDS.keys())
+FIELD_COLUMNS = list(EVENT_FIELDS.values())
+
+NS_SOAP   = "http://schemas.xmlsoap.org/soap/envelope/"
+NS_XSI    = "http://www.w3.org/2001/XMLSchema-instance"
+NS_XSD    = "http://www.w3.org/2001/XMLSchema"
+NS_PARSEC = "http://parsec.ru/Parsec3IntergationService"
+
+print("Конфигурация загружена.")
+
+
+# %% [markdown]
+# ## 2. SOAP-клиент
+
+# %%
+import httpx
+from lxml import etree
+from typing import Optional
+import textwrap
+
+
+def _envelope(method, body_inner):
+    """Оборачивает тело запроса в SOAP-конверт."""
+    tmpl = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<soap:Envelope\n'
+        '    xmlns:soap="{soap}"\n'
+        '    xmlns:xsi="{xsi}"\n'
+        '    xmlns:xsd="{xsd}">\n'
+        '  <soap:Body>\n'
+        '    <{method} xmlns="{parsec}">\n'
+        '{body}'
+        '    </{method}>\n'
+        '  </soap:Body>\n'
+        '</soap:Envelope>'
+    )
+    return tmpl.format(
+        soap=NS_SOAP,
+        xsi=NS_XSI,
+        xsd=NS_XSD,
+        parsec=NS_PARSEC,
+        method=method,
+        body=textwrap.indent(body_inner.strip(), "      ") + "\n",
+    ).encode("utf-8")
+
+
+def _parse_body(response_bytes):
+    """Парсит SOAP-ответ, возвращает элемент Body."""
+    root = etree.fromstring(response_bytes)
+    body = root.find("{" + NS_SOAP + "}Body")
+    if body is None:
+        raise ValueError("SOAP Body не найден")
+    fault = body.find("{" + NS_SOAP + "}Fault")
+    if fault is not None:
+        fcode = _text(fault, "faultcode") or ""
+        fstr  = _text(fault, "faultstring") or ""
+        raise RuntimeError("SOAP Fault [" + fcode + "]: " + fstr)
+    return body
+
+
+def _text(node, local_name, default=None):
+    """Первый дочерний элемент с данным локальным именем -> .text."""
+    for child in node:
+        if etree.QName(child.tag).localname == local_name:
+            t = child.text or ""
+            return t.strip() or default
+    return default
+
+
+def _child(node, *local_names):
+    """Последовательный поиск вглубь по локальным именам."""
+    cur = node
+    for name in local_names:
+        found = None
+        for ch in cur:
+            if etree.QName(ch.tag).localname == name:
+                found = ch
+                break
+        if found is None:
+            return None
+        cur = found
+    return cur
+
+
+def _children(node, local_name):
+    """Все прямые дочерние элементы с данным локальным именем."""
+    return [ch for ch in node if etree.QName(ch.tag).localname == local_name]
+
+
+def _all_tags(node):
+    """Словарь localname -> element по всему дереву (для отладки)."""
+    return {etree.QName(el.tag).localname: el for el in node.iter()}
+
+
+class ParsecClient(object):
+    """
+    SOAP-клиент для Parsec Integration Service.
+    Использование:
+        with ParsecClient(CONNECTION) as c:
+            resp = c.call("GetOrgUnitsHierarhy")
+    """
+
+    def __init__(self, config):
+        self.config     = config
+        self.base_url   = (
+            "http://" + config["host_addr"] +
+            ":10101/IntegrationService/IntegrationService.asmx"
+        )
+        self._http      = None
+        self.session_id = None
+
+    def _post(self, method, body_xml):
+        payload = _envelope(method, body_xml)
+        headers = {
+            "Content-Type": "text/xml; charset=utf-8",
+            "SOAPAction":   '"' + NS_PARSEC + "/" + method + '"',
+        }
+        resp = self._http.post(self.base_url, content=payload, headers=headers)
+        resp.raise_for_status()
+        return _parse_body(resp.content)
+
+    def connect(self):
+        self._http = httpx.Client(timeout=self.config.get("timeout", 30))
+        body = (
+            "<domain>" + self.config["organization"] + "</domain>\n" +
+            "<userName>" + self.config["username"] + "</userName>\n" +
+            "<password>" + self.config["password"] + "</password>"
+        )
+        body_el = self._post("OpenSession", body)
+        result  = _child(body_el, "OpenSessionResponse", "OpenSessionResult")
+        if result is None:
+            raise RuntimeError("OpenSession: неожиданная структура ответа")
+        code = _text(result, "Result")
+        if code == "-1":
+            raise ConnectionError("Авторизация: " + (_text(result, "ErrorMessage") or ""))
+        session_node    = _child(result, "Value")
+        self.session_id = _text(session_node, "SessionID")
+        print("Сессия открыта. SessionID: " + str(self.session_id))
+        return self
+
+    def disconnect(self):
+        if self.session_id and self._http:
+            try:
+                self._post("CloseSession",
+                           "<sessionID>" + self.session_id + "</sessionID>")
+                print("Сессия закрыта.")
+            except Exception as e:
+                print("Предупреждение при закрытии сессии: " + str(e))
+        if self._http:
+            self._http.close()
+        self.session_id = None
+        self._http      = None
+
+    def __enter__(self):
+        return self.connect()
+
+    def __exit__(self, *_):
+        self.disconnect()
+
+    def call(self, method, extra_xml=""):
+        """Вызывает метод, автоматически подставляя sessionID."""
+        body = "<sessionID>" + self.session_id + "</sessionID>\n" + extra_xml
+        body_el  = self._post(method, body)
+        response = _child(body_el, method + "Response")
+        return response
+
+
+print("ParsecClient определён.")
+
+
+# %% [markdown]
+# ## 3. Парсеры ответов
+
+# %%
+
+def parse_org_units(response_el):
+    result_el = _child(response_el, "GetOrgUnitsHierarhyResult")
+    if result_el is None:
+        return []
+    rows = []
+    for unit in result_el:
+        rows.append({
+            "id":        _text(unit, "ID"),
+            "name":      _text(unit, "NAME"),
+            "desc":      _text(unit, "DESC"),
+            "parent_id": _text(unit, "PARENT_ID"),
+        })
+    return rows
+
+
+def parse_territories(response_el):
+    result_el = _child(response_el, "GetTerritoriesHierarhyResult")
+    if result_el is None:
+        return []
+    rows = []
+    for t in result_el:
+        rows.append({
+            "id":        _text(t, "ID"),
+            "type":      _text(t, "TYPE"),
+            "name":      _text(t, "NAME"),
+            "desc":      _text(t, "DESC"),
+            "parent_id": _text(t, "PARENT_ID"),
+        })
+    return rows
+
+
+def parse_transaction_types(response_el):
+    result_el = _child(response_el, "GetTransactionTypesResult")
+    if result_el is None:
+        return []
+    rows = []
+    for t in result_el:
+        rows.append({
+            "id":         _text(t, "ID"),
+            "name":       _text(t, "NAME"),
+            "class_mask": _text(t, "CLASS_MASK"),
+        })
+    return rows
+
+
+def parse_event_objects(response_el, columns):
+    """
+    EventObject[].Values.anyType[] -> список списков строк.
+    Порядок значений соответствует порядку запрошенных полей.
+    """
+    result_el = _child(response_el, "GetEventHistoryResultResult")
+    if result_el is None:
+        return []
+    rows = []
+    for ev_obj in result_el:
+        values_el = _child(ev_obj, "Values")
+        if values_el is None:
+            rows.append([None] * len(columns))
+            continue
+        vals = [ch.text for ch in values_el]
+        while len(vals) < len(columns):
+            vals.append(None)
+        rows.append(vals[:len(columns)])
+    return rows
+
+
+def _guid_result(response_el, method):
+    result_el = _child(response_el, method + "Result")
+    if result_el is None:
+        raise RuntimeError(method + ": элемент результата не найден")
+    code = _text(result_el, "Result")
+    if code == "-1":
+        raise RuntimeError(method + " error: " + (_text(result_el, "ErrorMessage") or ""))
+    return _text(result_el, "Value")
+
+
+print("Парсеры определены.")
+
+
+# %% [markdown]
+# ## 4. Справочники
+
+# %%
+import pandas as pd
+
+
+def load_org_units(c):
+    print("Загрузка подразделений...")
+    resp = c.call("GetOrgUnitsHierarhy")
+    df   = pd.DataFrame(parse_org_units(resp))
+    print("  -> " + str(len(df)) + " подразделений")
+    return df
+
+
+def load_territories(c):
+    print("Загрузка территорий...")
+    resp = c.call("GetTerritoriesHierarhy")
+    df   = pd.DataFrame(parse_territories(resp))
+    print("  -> " + str(len(df)) + " территорий")
+    return df
+
+
+def load_transaction_types(c):
+    print("Загрузка типов транзакций...")
+    resp = c.call("GetTransactionTypes", "<classMask>-1</classMask>")
+    df   = pd.DataFrame(parse_transaction_types(resp))
+    print("  -> " + str(len(df)) + " типов")
+    return df
+
+
+# with ParsecClient(CONNECTION) as c:
+#     df_orgs   = load_org_units(c)
+#     df_terrs  = load_territories(c)
+#     df_ttypes = load_transaction_types(c)
+
+print("Функции справочников определены.")
+
+
+# %% [markdown]
+# ## 5. Выгрузка исторических событий
+
+# %%
+import time
+
+
+def _dt_soap(dt):
+    """datetime (UTC) -> строка 'yyyy-mm-ddThh:mm:ssZ'."""
+    utc = dt.astimezone(timezone.utc)
+    return utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _build_params_xml(date_from, date_to, transaction_types, max_result_size,
+                       territory_ids=None, org_ids=None, person_ids=None):
+    tt_xml = "\n".join(
+        "    <unsignedInt>" + str(t) + "</unsignedInt>"
+        for t in transaction_types
+    )
+    parts = [
+        "<parameters>",
+        "  <StartDate>" + _dt_soap(date_from) + "</StartDate>",
+        "  <EndDate>"   + _dt_soap(date_to)   + "</EndDate>",
+        "  <TransactionTypes>",
+        tt_xml,
+        "  </TransactionTypes>",
+        "  <MaxResultSize>" + str(max_result_size) + "</MaxResultSize>",
+    ]
+    if territory_ids:
+        parts.append("  <Territories>")
+        for g in territory_ids:
+            parts.append("    <guid>" + g + "</guid>")
+        parts.append("  </Territories>")
+    if org_ids:
+        parts.append("  <Organizations>")
+        for g in org_ids:
+            parts.append("    <guid>" + g + "</guid>")
+        parts.append("  </Organizations>")
+    if person_ids:
+        parts.append("  <Users>")
+        for g in person_ids:
+            parts.append("    <guid>" + g + "</guid>")
+        parts.append("  </Users>")
+    parts.append("</parameters>")
+    return "\n".join(parts)
+
+
+def _build_fields_xml(field_guids):
+    items = "\n".join("  <guid>" + g + "</guid>" for g in field_guids)
+    return "<fields>\n" + items + "\n</fields>"
+
+
+def fetch_event_history(c,
+                         date_from,
+                         date_to,
+                         transaction_types=None,
+                         field_guids=None,
+                         field_columns=None,
+                         max_result_size=MAX_RESULT_SIZE,
+                         chunk_size=CHUNK_SIZE,
+                         territory_ids=None,
+                         org_ids=None,
+                         person_ids=None):
+
+    if transaction_types is None:
+        transaction_types = TRANSACTION_TYPES
+    if field_guids is None:
+        field_guids = FIELD_GUIDS
+    if field_columns is None:
+        field_columns = FIELD_COLUMNS
+
+    # 1. Открываем сессию истории
+    print("Открытие сессии истории событий...")
+    params_xml = _build_params_xml(
+        date_from, date_to, transaction_types, max_result_size,
+        territory_ids, org_ids, person_ids
+    )
+    resp    = c.call("OpenEventHistorySession", params_xml)
+    hist_id = _guid_result(resp, "OpenEventHistorySession")
+    print("  eventHistorySessionID: " + str(hist_id))
+
+    try:
+        # 2. Кол-во событий
+        extra = "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>"
+        resp  = c.call("GetEventHistoryResultCount", extra)
+        count_el = _child(resp, "GetEventHistoryResultCountResult")
+        total = int(count_el.text) if (count_el is not None and count_el.text) else 0
+        print("  Всего событий: " + str(total))
+
+        if total == 0:
+            return pd.DataFrame(columns=field_columns)
+
+        # 3. Постраничная выгрузка
+        fields_xml = _build_fields_xml(field_guids)
+        all_rows   = []
+        t0 = time.time()
+
+        for offset in range(0, total, chunk_size):
+            n = min(chunk_size, total - offset)
+            extra = (
+                "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>\n" +
+                fields_xml + "\n" +
+                "<offset>" + str(offset) + "</offset>\n" +
+                "<count>"  + str(n)      + "</count>"
+            )
+            resp = c.call("GetEventHistoryResult", extra)
+            rows = parse_event_objects(resp, field_columns)
+            all_rows.extend(rows)
+
+            done    = offset + n
+            elapsed = time.time() - t0
+            speed   = done / elapsed if elapsed > 0 else 0
+            eta     = (total - done) / speed if speed > 0 else 0
+            pct     = done * 100.0 / total
+            print(
+                "\r  " + str(round(pct, 1)) + "%"
+                "  " + str(done) + "/" + str(total) +
+                "  " + str(int(speed)) + " зап/с" +
+                "  ETA " + str(int(eta)) + "с   ",
+                end=""
+            )
+
+        print("\n  Готово за " + str(round(time.time() - t0, 1)) + "с")
+
+    finally:
+        # 4. Закрываем сессию истории — ВСЕГДА
+        try:
+            extra = "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>"
+            c._post(
+                "CloseEventHistorySession",
+                "<sessionID>" + c.session_id + "</sessionID>\n" + extra
+            )
+            print("  Сессия истории закрыта.")
+        except Exception as e:
+            print("  Предупреждение CloseEventHistorySession: " + str(e))
+
+    df = pd.DataFrame(all_rows, columns=field_columns)
+    print("  DataFrame: " + str(df.shape[0]) + " строк x " + str(df.shape[1]) + " столбцов")
+    return df
+
+
+print("fetch_event_history определена.")
+
+
+# %% [markdown]
+# ## 6. Постобработка
+
+# %%
+
+def postprocess_events(df, tz_offset_h=LOCAL_TZ_OFFSET_HOURS):
+    if df.empty:
+        return df
+
+    df       = df.copy()
+    local_tz = timezone(timedelta(hours=tz_offset_h))
+    DAYS     = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+    def parse_dt(val):
+        if not val:
+            return pd.NaT
+        try:
+            return pd.to_datetime(val, utc=True)
+        except Exception:
+            return pd.NaT
+
+    def to_local(x):
+        if pd.isna(x):
+            return pd.NaT
+        return x.astimezone(local_tz)
+
+    df["event_datetime"]       = df["event_datetime"].apply(parse_dt)
+    df["event_datetime_local"] = df["event_datetime"].apply(to_local)
+    df["date"]        = df["event_datetime_local"].apply(lambda x: x.date()    if pd.notna(x) else None)
+    df["hour"]        = df["event_datetime_local"].apply(lambda x: x.hour      if pd.notna(x) else None)
+    df["weekday_num"] = df["event_datetime_local"].apply(lambda x: x.weekday() if pd.notna(x) else None)
+    df["weekday"]     = df["weekday_num"].apply(lambda x: DAYS[x] if (pd.notna(x) and 0 <= x <= 6) else None)
+
+    ENTRY_CODES = {590144, 590152}
+    EXIT_CODES  = {590145, 590153, 590146, 590244, 590245}
+
+    def to_int(v):
+        try:
+            return int(v)
+        except Exception:
+            return None
+
+    df["transaction_code"] = df["transaction_code"].apply(to_int)
+    df["is_entry"] = df["transaction_code"].apply(
+        lambda c: True  if c in ENTRY_CODES else
+                  False if c in EXIT_CODES  else None
+    )
+
+    str_cols = [
+        "person_fullname", "person_lastname", "person_firstname",
+        "department", "territory_name", "zone_name",
+        "tab_number", "card_code", "transaction_name",
+    ]
+    for col in str_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.strip().replace({"None": None, "nan": None})
+
+    priority = [
+        "event_datetime_local", "date", "hour", "weekday",
+        "is_entry", "transaction_code", "transaction_name",
+        "person_fullname", "department", "tab_number",
+        "territory_name", "zone_name", "card_code", "person_id",
+        "event_datetime",
+    ]
+    rest = [c for c in df.columns if c not in priority]
+    df   = df[[c for c in priority if c in df.columns] + rest]
+    return df
+
+
+print("postprocess_events определена.")
+
+
+# %% [markdown]
+# ## 7. Основной запуск
+
+# %%
+import os
+
+
+def run_full_export(save_csv=True, save_excel=False, prefix="parsec_events"):
+    with ParsecClient(CONNECTION) as c:
+        df_orgs  = load_org_units(c)
+        df_terrs = load_territories(c)
+        df_raw   = fetch_event_history(c, date_from=DATE_FROM, date_to=DATE_TO)
+
+    df = postprocess_events(df_raw)
+    print("Итог: " + str(len(df)) + " событий")
+
+    if save_csv:
+        df.to_csv(prefix + ".csv",         index=False, encoding="utf-8-sig")
+        df_orgs.to_csv("ref_org_units.csv",    index=False, encoding="utf-8-sig")
+        df_terrs.to_csv("ref_territories.csv", index=False, encoding="utf-8-sig")
+        print("CSV сохранены.")
+
+    if save_excel:
+        with pd.ExcelWriter(prefix + ".xlsx", engine="openpyxl") as w:
+            df.to_excel(w,       sheet_name="События",       index=False)
+            df_orgs.to_excel(w,  sheet_name="Подразделения", index=False)
+            df_terrs.to_excel(w, sheet_name="Территории",    index=False)
+        print("Excel сохранён: " + prefix + ".xlsx")
+
+    return df, df_orgs, df_terrs
+
+
+# df_events, df_orgs, df_terrs = run_full_export(save_csv=True, save_excel=True)
+
+print("run_full_export определена.")
+
+
+# %% [markdown]
+# ## 8. Аналитика
+
+# %%
+
+def analytics_summary(df):
+    entries = df[df["is_entry"] == True]
+    exits   = df[df["is_entry"] == False]
+    rows = {
+        "Всего событий":      len(df),
+        "Входов":             len(entries),
+        "Выходов":            len(exits),
+        "Уникальных сотруд.": df["person_id"].nunique(),
+        "Дней в данных":      df["date"].nunique(),
+        "Точек прохода":      df["territory_name"].nunique(),
+        "Период с":           str(df["date"].min()),
+        "Период по":          str(df["date"].max()),
+    }
+    for k, v in rows.items():
+        print("  " + str(k).ljust(25) + str(v))
+    return rows
+
+
+def analytics_daily_attendance(df):
+    """Первый вход / последний выход каждого сотрудника за каждый день."""
+    entries = df[df["is_entry"] == True]
+    exits   = df[df["is_entry"] == False]
+
+    first_in = (
+        entries.groupby(["date", "person_id"])["event_datetime_local"]
+        .min().reset_index()
+        .rename(columns={"event_datetime_local": "first_entry"})
+    )
+    last_out = (
+        exits.groupby(["date", "person_id"])["event_datetime_local"]
+        .max().reset_index()
+        .rename(columns={"event_datetime_local": "last_exit"})
+    )
+    daily = pd.merge(first_in, last_out, on=["date", "person_id"], how="outer")
+    meta  = df[["person_id", "person_fullname", "department"]].drop_duplicates("person_id")
+    daily = daily.merge(meta, on="person_id", how="left")
+    daily["time_on_site_h"] = (
+        (daily["last_exit"] - daily["first_entry"]).dt.total_seconds() / 3600
+    ).round(2)
+
+    daily_unique = (
+        daily.groupby("date")["person_id"].nunique()
+        .reset_index().rename(columns={"person_id": "unique_visitors"})
+    )
+    print("Посещаемость: " + str(len(daily)) + " person x day")
+    return daily, daily_unique
+
+
+def analytics_by_department(df):
+    return (
+        df[df["is_entry"] == True]
+        .groupby("department")
+        .agg(
+            total_entries =("event_datetime_local", "count"),
+            unique_persons=("person_id",            "nunique"),
+            unique_days   =("date",                 "nunique"),
+        )
+        .sort_values("total_entries", ascending=False)
+        .reset_index()
+    )
+
+
+def analytics_by_territory(df):
+    t = (
+        df.groupby(["territory_name", "is_entry"]).size()
+        .unstack(fill_value=0).reset_index()
+    )
+    t.columns.name = None
+    t = t.rename(columns={True: "entries", False: "exits"})
+    for col in ("entries", "exits"):
+        if col not in t.columns:
+            t[col] = 0
+    t["total"] = t["entries"] + t["exits"]
+    return t.sort_values("total", ascending=False).reset_index(drop=True)
+
+
+def analytics_hourly_heatmap(df):
+    DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    hm = (
+        df[df["is_entry"] == True]
+        .groupby(["weekday_num", "hour"]).size()
+        .reset_index(name="count")
+    )
+    hm["weekday"] = hm["weekday_num"].apply(
+        lambda x: DAYS[x] if 0 <= x <= 6 else "?"
+    )
+    return hm
+
+
+def analytics_no_exit(df):
+    """Входы без парного выхода в тот же день."""
+    entries = (
+        df[df["is_entry"] == True]
+        [["date", "person_id", "person_fullname", "department"]]
+        .drop_duplicates(["date", "person_id"])
+    )
+    exits = df[df["is_entry"] == False][["date", "person_id"]].copy()
+    exits["has_exit"] = True
+
+    result  = entries.merge(
+        exits.drop_duplicates(["date", "person_id"]),
+        on=["date", "person_id"], how="left"
+    )
+    no_exit = result[result["has_exit"].isna()].drop(columns=["has_exit"])
+    print("Входов без выхода: " + str(len(no_exit)))
+    return no_exit.sort_values(["date", "department"])
+
+
+print("Аналитические функции определены.")
+
+
+# %% [markdown]
+# ## 9. Запуск аналитики
+#
+# Загрузка из файла если сессия уже не нужна:
+# ```python
+# df_events = pd.read_csv("parsec_events.csv", encoding="utf-8-sig")
+# df_events["date"] = pd.to_datetime(df_events["date"]).dt.date
+# df_events["event_datetime_local"] = pd.to_datetime(df_events["event_datetime_local"])
+# ```
+
+# %%
+
+# print("=== Сводка ===")
+# analytics_summary(df_events)
+
+# print("\n=== Посещаемость ===")
+# df_daily, df_daily_unique = analytics_daily_attendance(df_events)
+# print(df_daily_unique.tail(10).to_string(index=False))
+
+# print("\n=== По подразделениям ===")
+# print(analytics_by_department(df_events).head(10).to_string(index=False))
+
+# print("\n=== По точкам прохода ===")
+# print(analytics_by_territory(df_events).head(10).to_string(index=False))
+
+# print("\n=== Тепловая карта ===")
+# hm = analytics_hourly_heatmap(df_events)
+# pivot = hm.pivot(index="weekday", columns="hour", values="count").fillna(0)
+# print(pivot.to_string())
+
+# print("\n=== Аномалии: вход без выхода ===")
+# print(analytics_no_exit(df_events).head(20).to_string(index=False))
+
+# with pd.ExcelWriter("parsec_analytics.xlsx", engine="openpyxl") as w:
+#     df_events.to_excel(w,                          sheet_name="Все события",       index=False)
+#     df_daily.to_excel(w,                           sheet_name="Посещаемость",      index=False)
+#     analytics_by_department(df_events).to_excel(w, sheet_name="По подразделениям", index=False)
+#     analytics_by_territory(df_events).to_excel(w,  sheet_name="По точкам",         index=False)
+#     analytics_no_exit(df_events).to_excel(w,       sheet_name="Аномалии",          index=False)
+
+print("Раскомментируй нужные блоки.")
+
+
+# %% [markdown]
+# ## 10. Инкрементальная выгрузка
+
+# %%
+
+def incremental_update(output_csv="parsec_events.csv", lookback_days=2):
+    """Выгружает последние N дней и дозаписывает в CSV."""
+    now_utc   = datetime.now(timezone.utc)
+    date_from = (now_utc - timedelta(days=lookback_days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    print("Инкрементальная выгрузка: " + str(date_from.date()) + " -> " + str(now_utc.date()))
+
+    with ParsecClient(CONNECTION) as c:
+        df_raw = fetch_event_history(
+            c,
+            date_from=date_from,
+            date_to=now_utc,
+            max_result_size=500000,
+        )
+
+    if df_raw.empty:
+        print("Новых событий нет.")
+        return None
+
+    df_new       = postprocess_events(df_raw)
+    write_header = not os.path.exists(output_csv)
+    df_new.to_csv(output_csv, mode="a", header=write_header,
+                  index=False, encoding="utf-8-sig")
+    print("Добавлено " + str(len(df_new)) + " строк -> " + output_csv)
+    return df_new
+
+
+# incremental_update(lookback_days=2)
+
+print("incremental_update определена.")
