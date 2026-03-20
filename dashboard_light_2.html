@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Качество данных — Мониторинг</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F5F6F8;
+    --surface: #FFFFFF;
+    --border: #E8EAED;
+    --border-hover: #D0D4DA;
+    --text: #111827;
+    --text-2: #4B5563;
+    --text-3: #9CA3AF;
+    --red: #EF4444;
+    --red-bg: #FEF2F2;
+    --red-border: #FECACA;
+    --green: #10B981;
+    --green-bg: #ECFDF5;
+    --green-border: #A7F3D0;
+    --amber: #F59E0B;
+    --amber-bg: #FFFBEB;
+    --amber-border: #FDE68A;
+    --blue: #3B82F6;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app { max-width:1400px; margin:0 auto; }
+
+  .header {
+    padding: 28px 36px 20px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .header h1 { font-size:22px; font-weight:700; letter-spacing:-0.3px; }
+  .header p { font-size:13px; color:var(--text-2); margin-top:2px; }
+  .header-right { display:flex; align-items:center; gap:12px; }
+
+  .live-badge {
+    display:flex; align-items:center; gap:6px;
+    font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:1px;
+    color:var(--green); background:var(--green-bg);
+    border:1px solid var(--green-border);
+    padding:5px 12px; border-radius:8px;
+  }
+  .live-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:var(--green);
+    animation:pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .date-chip {
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px; color:var(--text-2);
+    background:var(--surface); padding:6px 14px;
+    border-radius:8px; border:1px solid var(--border);
+  }
+
+  .filters {
+    padding:0 36px 20px;
+    display:flex; gap:6px; flex-wrap:wrap;
+  }
+  .chip {
+    font-family:'Plus Jakarta Sans',sans-serif;
+    font-size:12px; font-weight:500;
+    padding:6px 14px; border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--surface); color:var(--text-2);
+    cursor:pointer; transition:all .15s;
+  }
+  .chip:hover { border-color:var(--border-hover); color:var(--text); }
+  .chip.on { background:var(--text); border-color:var(--text); color:#fff; }
+
+  .main { padding:0 36px 48px; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+
+  .section {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:16px; padding:20px;
+    animation:fadeUp .4s cubic-bezier(.25,1,.5,1) both;
+  }
+  .section:nth-child(1){animation-delay:.03s}
+  .section:nth-child(2){animation-delay:.08s}
+  .section:nth-child(3){animation-delay:.13s}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+  .sec-head { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .sec-dot { width:8px; height:8px; border-radius:3px; flex-shrink:0; }
+  .sec-dot.v{background:var(--blue)} .sec-dot.c{background:var(--green)} .sec-dot.l{background:var(--amber)}
+  .sec-title { font-size:13px; font-weight:600; color:var(--text); }
+  .sec-desc { font-size:11px; color:var(--text-3); margin-bottom:14px; }
+  .cards { display:flex; flex-direction:column; gap:6px; }
+
+  .card {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 14px; border-radius:10px;
+    border:1px solid var(--border); background:var(--bg);
+    transition:all .15s;
+    animation:cardIn .35s cubic-bezier(.25,1,.5,1) both;
+  }
+  .cards .card:nth-child(1){animation-delay:.12s}
+  .cards .card:nth-child(2){animation-delay:.17s}
+  .cards .card:nth-child(3){animation-delay:.22s}
+  .cards .card:nth-child(4){animation-delay:.27s}
+  @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+  .card:hover { border-color:var(--border-hover); }
+  .card.ok { background:var(--green-bg); border-color:var(--green-border); }
+  .card.warn:hover { background:var(--amber-bg); border-color:var(--amber-border); }
+  .card.bad:hover { background:var(--red-bg); border-color:var(--red-border); }
+
+  .card-label { font-size:13px; font-weight:500; color:var(--text-2); line-height:1.4; }
+  .val {
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700; font-size:26px; letter-spacing:-1.5px;
+    flex-shrink:0; text-align:right; min-width:56px;
+    transition:transform .15s;
+  }
+  .card:hover .val { transform:scale(1.04); }
+  .val.ok{color:var(--green)} .val.warn{color:var(--amber)} .val.bad{color:var(--red)}
+
+  @media(max-width:1060px){
+    .grid{grid-template-columns:1fr}
+    .header,.filters,.main{padding-left:20px;padding-right:20px}
+    .header{flex-direction:column;align-items:flex-start;gap:10px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <h1>Качество данных</h1>
+      <p>Мониторинг проблемных записей и метрик заполнения</p>
+    </div>
+    <div class="header-right">
+      <div class="live-badge"><div class="live-dot"></div>Live</div>
+      <div class="date-chip">01.01.2026 — 19.03.2026</div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <button class="chip on">Все рекрутеры</button>
+    <button class="chip on">Активная</button>
+    <button class="chip">Архив</button>
+    <button class="chip">Закрыта</button>
+    <button class="chip">Открыта</button>
+    <button class="chip">Отменена</button>
+    <button class="chip">Пауза</button>
+  </div>
+
+  <div class="main">
+    <div class="grid">
+      <div class="section">
+        <div class="sec-head"><div class="sec-dot v"></div><div class="sec-title">Данные вакансии</div></div>
+        <div class="sec-desc">Проблемные записи по вакансиям</div>
+        <div class="cards">
+          <div class="card warn"><div class="card-label">Вакансии без ответственного рекрутера</div><div class="val warn" data-t="5">0</div></div>
+          <div class="card bad"><div class="card-label">Подвакансии без активности более 14 дней</div><div class="val bad" data-t="35">0</div></div>
+          <div class="card bad"><div class="card-label">Подвакансии без привязки к супервакансии</div><div class="val bad" data-t="71">0</div></div>
+          <div class="card warn"><div class="card-label">Супервакансии с неопубликованными подвакансиями</div><div class="val warn" data-t="17">0</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sec-head"><div class="sec-dot c"></div><div class="sec-title">Данные кандидата</div></div>
+        <div class="sec-desc">Метрики заполнения по кандидатам</div>
+        <div class="cards">
+          <div class="card bad"><div class="card-label">Кандидаты с заполненными формами оценки</div><div class="val bad" data-s="0,22%">—</div></div>
+          <div class="card ok"><div class="card-label">Кандидаты без подписанного соглашения по ПД</div><div class="val ok" data-t="0">0</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="sec-head"><div class="sec-dot l"></div><div class="sec-title">Вакансия — кандидат</div></div>
+        <div class="sec-desc">Качество связки кандидат-вакансия</div>
+        <div class="cards">
+          <div class="card warn"><div class="card-label">Принятые кандидаты на незакрытых вакансиях</div><div class="val warn" data-t="2">0</div></div>
+          <div class="card bad"><div class="card-label">Нераспределённые кандидаты на неактивных вакансиях</div><div class="val bad" data-t="978">0</div></div>
+          <div class="card bad"><div class="card-label">Кандидаты без движения на супервакансии более 7 дней</div><div class="val bad" data-t="2687">0</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.val[data-t]').forEach((el,i)=>{
+    const t=parseInt(el.dataset.t); if(isNaN(t))return;
+    setTimeout(()=>{const s=performance.now();!function f(n){const p=Math.min((n-s)/750,1);el.textContent=Math.round((1-Math.pow(1-p,3))*t).toLocaleString('ru-RU');if(p<1)requestAnimationFrame(f)}(performance.now())},200+i*60);
+  });
+  document.querySelectorAll('.val[data-s]').forEach(el=>{setTimeout(()=>{el.textContent=el.dataset.s},300)});
+  document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>c.classList.toggle('on')));
+</script>
+</body>
+</html>
