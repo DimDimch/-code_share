@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Время нахождения сотрудников на территории предприятия</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --surface-alt: #f8f9fb;
+      --border: #e5e7eb;
+      --border-light: #f0f1f3;
+      --text-primary: #111827;
+      --text-secondary: #6b7280;
+      --text-muted: #9ca3af;
+      --accent: #2563eb;
+      --accent-light: #dbeafe;
+      --accent-dark: #1d4ed8;
+      --green: #059669;
+      --green-bg: #ecfdf5;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
+      --amber: #d97706;
+      --amber-bg: #fffbeb;
+      --zone-territory: #6366f1;
+      --zone-building: #2563eb;
+      --zone-production: #0891b2;
+      --radius: 10px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      line-height: 1.5;
+      min-width: 1280px;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+    .header-subtitle { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .date-range {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface-alt); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer;
+    }
+    .badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; letter-spacing: 0.3px; text-transform: uppercase; }
+    .badge-qw { background: var(--amber-bg); color: var(--amber); }
+    .badge-norm { background: var(--accent-light); color: var(--accent); opacity: 0.5; }
+
+    .main { padding: 24px 32px; max-width: 1600px; }
+
+    /* Filters */
+    .filters-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .filter-group { display: flex; align-items: center; gap: 6px; }
+    .filter-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+    .filter-select {
+      appearance: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 32px 8px 12px; font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; min-width: 180px;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center;
+    }
+    .filter-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+    .filter-divider { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+    .btn-reset { font-family: inherit; font-size: 12px; font-weight: 500; color: var(--text-muted); background: none; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+
+    /* Zone nesting */
+    .zone-nesting {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 24px;
+      padding: 12px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    }
+    .zone-nesting-item { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+    .zone-nesting-dot { width: 10px; height: 10px; border-radius: 3px; }
+    .zone-nesting-arrow { color: var(--text-muted); font-size: 14px; }
+
+    /* KPI */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .kpi-card {
+      background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border);
+      padding: 20px 22px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+    }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+    .kpi-card:nth-child(1)::before { background: var(--zone-territory); }
+    .kpi-card:nth-child(2)::before { background: var(--zone-building); }
+    .kpi-card:nth-child(3)::before { background: var(--zone-production); }
+    .kpi-card:nth-child(4)::before { background: var(--green); }
+    .kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+    .kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; }
+    .kpi-value span { font-size: 18px; font-weight: 400; color: var(--text-muted); }
+    .kpi-sub { font-size: 12px; color: var(--text-muted); }
+    .kpi-norm-placeholder { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border-light); font-size: 11px; color: var(--text-muted); font-style: italic; display: flex; align-items: center; gap: 4px; }
+    .kpi-norm-placeholder .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+    .kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+    .kpi-delta.neutral { background: var(--surface-alt); color: var(--text-secondary); }
+
+    /* Cards */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .grid-full { margin-bottom: 24px; }
+    .card { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: var(--shadow-sm); overflow: hidden; }
+    .card-header { padding: 18px 22px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); }
+    .card-title { font-size: 13px; font-weight: 600; }
+    .card-actions { display: flex; gap: 6px; }
+    .card-action-btn {
+      font-family: inherit; font-size: 11px; font-weight: 500; color: var(--text-muted);
+      background: var(--surface-alt); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+    }
+    .card-action-btn.active { background: var(--accent-light); color: var(--accent); border-color: transparent; }
+    .card-body { padding: 18px 22px; }
+
+    /* Zone breakdown */
+    .zone-breakdown { display: flex; flex-direction: column; gap: 16px; }
+    .zone-row { display: flex; align-items: center; gap: 14px; }
+    .zone-label-col { width: 120px; flex-shrink: 0; }
+    .zone-name { font-size: 13px; font-weight: 600; }
+    .zone-sublabel { font-size: 11px; color: var(--text-muted); }
+    .zone-bar-wrap { flex: 1; height: 36px; background: var(--surface-alt); border-radius: 6px; overflow: hidden; position: relative; }
+    .zone-bar { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 12px; font-size: 12px; font-weight: 600; color: #fff; }
+    .zone-bar.territory { background: var(--zone-territory); }
+    .zone-bar.building { background: var(--zone-building); }
+    .zone-bar.production { background: var(--zone-production); }
+    .zone-value-col { width: 80px; text-align: right; flex-shrink: 0; }
+    .zone-hours { font-size: 15px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .zone-hours-sub { font-size: 11px; color: var(--text-muted); }
+
+    /* ── HEATMAP with day picker ── */
+    .heatmap-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+    .heatmap-day-btn {
+      font-family: inherit; font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .heatmap-day-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .heatmap-day-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .heatmap-day-btn.weekend { color: var(--text-muted); font-style: italic; }
+    .heatmap-day-btn.weekend.active { background: var(--accent); color: #fff; }
+
+    .heatmap-grid {
+      display: grid; grid-template-columns: 80px repeat(24, 1fr); gap: 2px; font-size: 10px;
+    }
+    .heatmap-header { font-weight: 600; color: var(--text-muted); text-align: center; padding: 4px 0; font-size: 10px; }
+    .heatmap-row-label { font-size: 11px; font-weight: 500; color: var(--text-secondary); display: flex; align-items: center; padding-right: 8px; }
+    .heatmap-cell { aspect-ratio: 1; border-radius: 3px; min-height: 18px; position: relative; }
+    .heatmap-cell[data-count]:hover::after {
+      content: attr(data-count) ' чел';
+      position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+      background: var(--text-primary); color: #fff; font-size: 10px; font-weight: 600;
+      padding: 2px 6px; border-radius: 4px; white-space: nowrap; z-index: 10;
+      pointer-events: none;
+    }
+    .heatmap-legend { display: flex; align-items: center; gap: 6px; margin-top: 12px; justify-content: flex-end; }
+    .heatmap-legend-label { font-size: 10px; color: var(--text-muted); }
+    .heatmap-legend-bar { display: flex; gap: 1px; }
+    .heatmap-legend-bar span { width: 16px; height: 10px; border-radius: 2px; }
+
+    /* Day detail row */
+    .day-detail-row {
+      margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-light);
+      display: flex; gap: 32px; align-items: flex-start;
+    }
+    .day-detail-stat { text-align: center; }
+    .day-detail-stat .val { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .day-detail-stat .lbl { font-size: 11px; color: var(--text-muted); }
+
+    /* ── CALENDAR ── */
+    .calendar-container { display: flex; gap: 24px; align-items: flex-start; }
+    .calendar-grid-wrap { flex: 1; }
+    .calendar-month-label { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+    .calendar-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    }
+    .cal-header {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--text-muted); text-align: center; padding: 4px 0;
+    }
+    .cal-day {
+      aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; font-size: 12px; position: relative;
+      border: 1px solid transparent; cursor: default; min-height: 56px;
+    }
+    .cal-day.empty { background: transparent; }
+    .cal-day .day-num { font-weight: 600; font-size: 12px; line-height: 1; margin-bottom: 2px; }
+    .cal-day .day-hours { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; }
+    .cal-day.weekend { background: var(--surface-alt); }
+    .cal-day.weekend .day-num { color: var(--text-muted); }
+
+    /* Calendar color coding based on hours */
+    .cal-day.hrs-high { background: #dbeafe; border-color: #93c5fd; }
+    .cal-day.hrs-high .day-hours { color: var(--accent-dark); }
+    .cal-day.hrs-norm { background: #ecfdf5; border-color: #a7f3d0; }
+    .cal-day.hrs-norm .day-hours { color: var(--green); }
+    .cal-day.hrs-low { background: #fef3c7; border-color: #fcd34d; }
+    .cal-day.hrs-low .day-hours { color: var(--amber); }
+    .cal-day.hrs-vlow { background: #fef2f2; border-color: #fca5a5; }
+    .cal-day.hrs-vlow .day-hours { color: var(--red); }
+    .cal-day.sick {
+      background: repeating-linear-gradient(135deg, #fef2f2, #fef2f2 4px, #fecaca 4px, #fecaca 5px);
+      border-color: #fca5a5;
+    }
+    .cal-day.sick .day-status { font-size: 9px; font-weight: 700; color: var(--red); text-transform: uppercase; letter-spacing: 0.3px; }
+    .cal-day.vacation {
+      background: repeating-linear-gradient(135deg, #eff6ff, #eff6ff 4px, #bfdbfe 4px, #bfdbfe 5px);
+      border-color: #93c5fd;
+    }
+    .cal-day.vacation .day-status { font-size: 9px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.3px; }
+    .cal-day.today { box-shadow: 0 0 0 2px var(--accent); }
+    .cal-day.future { opacity: 0.35; }
+
+    /* Calendar legend + stats */
+    .cal-sidebar { width: 220px; flex-shrink: 0; }
+    .cal-legend { margin-bottom: 20px; }
+    .cal-legend-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+    .cal-legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .cal-legend-swatch { width: 18px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.06); flex-shrink: 0; }
+    .cal-stat-card {
+      background: var(--surface-alt); border: 1px solid var(--border-light); border-radius: 8px;
+      padding: 14px 16px; margin-bottom: 10px;
+    }
+    .cal-stat-label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .cal-stat-value { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .cal-stat-sub { font-size: 11px; color: var(--text-muted); }
+
+    /* Table */
+    .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 12px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table thead th {
+      text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+      color: var(--text-muted); padding: 10px 14px; border-bottom: 2px solid var(--border); white-space: nowrap;
+    }
+    .data-table thead th.right { text-align: right; }
+    .data-table tbody tr { border-bottom: 1px solid var(--border-light); }
+    .data-table tbody tr:hover { background: var(--surface-alt); }
+    .data-table tbody td { padding: 12px 14px; vertical-align: middle; }
+    .data-table tbody td.right { text-align: right; }
+    .data-table tbody td.mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; }
+    .emp-cell { display: flex; align-items: center; gap: 10px; }
+    .emp-avatar {
+      width: 30px; height: 30px; border-radius: 50%; font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .emp-name { font-weight: 600; }
+    .emp-dept { font-size: 11px; color: var(--text-muted); }
+    .mini-bar { display: flex; gap: 2px; height: 8px; width: 120px; background: var(--surface-alt); border-radius: 4px; overflow: hidden; }
+    .mini-bar span { height: 100%; border-radius: 2px; }
+    .status-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+    .status-badge.ok { background: var(--green-bg); color: var(--green); }
+    .status-badge.warn { background: var(--amber-bg); color: var(--amber); }
+    .status-badge.low { background: var(--red-bg); color: var(--red); }
+    .norm-col-placeholder { color: var(--text-muted); font-size: 11px; font-style: italic; opacity: 0.5; }
+
+    .footer-note { text-align: center; font-size: 11px; color: var(--text-muted); padding: 16px 0 32px; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <div>
+        <h1>Присутствие сотрудников на территории</h1>
+        <div class="header-subtitle">Отчёт по данным СКУД · Время нахождения в зонах предприятия</div>
+      </div>
+      <span class="badge badge-qw">Quick Win — только СКУД</span>
+      <span class="badge badge-norm">Нормы — след. этап</span>
+    </div>
+    <div class="header-right">
+      <div class="date-range">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        01.03.2026 — 23.03.2026
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- FILTERS -->
+    <div class="filters-bar">
+      <div class="filter-group">
+        <span class="filter-label">Территория</span>
+        <select class="filter-select">
+          <option>Все площадки</option><option>ПЛ «Северная»</option><option>ПЛ «Центральная»</option><option>ПЛ «Южная»</option>
+        </select>
+      </div>
+      <div class="filter-divider"></div>
+      <div class="filter-group">
+        <span class="filter-label">Подразделение</span>
+        <select class="filter-select">
+          <option>Все подразделения</option><option>Цех №1 — Сборка</option><option>Цех №2 — Механика</option><option>Цех №3 — Логистика</option><option>Отдел ОТК</option><option>Администрация</option>
+        </select>
+      </div>
+      <div class="filter-divider"></div>
+      <div class="filter-group">
+        <span class="filter-label">Сотрудник</span>
+        <select class="filter-select">
+          <option>Все сотрудники</option><option>Иванов А. С.</option><option>Петрова М. В.</option><option>Сидоров К. Д.</option>
+        </select>
+      </div>
+      <div class="filter-divider"></div>
+      <button class="btn-reset">✕ Сбросить</button>
+    </div>
+
+    <!-- ZONE NESTING -->
+    <div class="zone-nesting">
+      <div class="zone-nesting-item"><div class="zone-nesting-dot" style="background: var(--zone-territory)"></div>Территория</div>
+      <span class="zone-nesting-arrow">⊃</span>
+      <div class="zone-nesting-item"><div class="zone-nesting-dot" style="background: var(--zone-building)"></div>Здание</div>
+      <span class="zone-nesting-arrow">⊃</span>
+      <div class="zone-nesting-item"><div class="zone-nesting-dot" style="background: var(--zone-production)"></div>Производство</div>
+      <span style="margin-left: auto; font-size: 11px; color: var(--text-muted);">Территория включает здание, здание включает производство</span>
+    </div>
+
+    <!-- KPI ROW -->
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Среднее на территории</div>
+        <div class="kpi-value" style="color: var(--zone-territory)">9.2<span> ч/день</span></div>
+        <div class="kpi-sub">в среднем за период · 47 сотрудников</div>
+        <div class="kpi-norm-placeholder"><span class="dot"></span> Норма по договору — <em>будет добавлена</em></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Среднее в здании</div>
+        <div class="kpi-value" style="color: var(--zone-building)">8.4<span> ч/день</span></div>
+        <div class="kpi-sub">91% от времени на территории</div>
+        <div class="kpi-norm-placeholder"><span class="dot"></span> Норма по табелю — <em>будет добавлена</em></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Среднее на производстве</div>
+        <div class="kpi-value" style="color: var(--zone-production)">6.8<span> ч/день</span></div>
+        <div class="kpi-sub">74% от времени на территории</div>
+        <div class="kpi-norm-placeholder"><span class="dot"></span> Факт/Норма — <em>след. этап</em></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Уникальных проходов / день</div>
+        <div class="kpi-value" style="color: var(--green)">43<span> чел</span></div>
+        <div class="kpi-sub">из 47 в подразделении</div>
+        <div class="kpi-delta neutral" style="margin-top: 8px;">91.5% явка по СКУД</div>
+      </div>
+    </div>
+
+    <!-- ZONE BREAKDOWN + TREND -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Распределение времени по зонам</span>
+          <div class="card-actions">
+            <button class="card-action-btn active">Среднее</button>
+            <button class="card-action-btn">Суммарное</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="zone-breakdown">
+            <div class="zone-row">
+              <div class="zone-label-col"><div class="zone-name">Территория</div><div class="zone-sublabel">вся площадка</div></div>
+              <div class="zone-bar-wrap"><div class="zone-bar territory" style="width: 92%">9.2 ч</div></div>
+              <div class="zone-value-col"><div class="zone-hours">9.2</div><div class="zone-hours-sub">ч/день</div></div>
+            </div>
+            <div class="zone-row">
+              <div class="zone-label-col"><div class="zone-name">Здание</div><div class="zone-sublabel">корпус внутри</div></div>
+              <div class="zone-bar-wrap"><div class="zone-bar building" style="width: 84%">8.4 ч</div></div>
+              <div class="zone-value-col"><div class="zone-hours">8.4</div><div class="zone-hours-sub">ч/день</div></div>
+            </div>
+            <div class="zone-row">
+              <div class="zone-label-col"><div class="zone-name">Производство</div><div class="zone-sublabel">рабочая зона</div></div>
+              <div class="zone-bar-wrap"><div class="zone-bar production" style="width: 68%">6.8 ч</div></div>
+              <div class="zone-value-col"><div class="zone-hours">6.8</div><div class="zone-hours-sub">ч/день</div></div>
+            </div>
+          </div>
+          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 10px;">Время «между зонами»</div>
+            <div style="display: flex; gap: 24px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: #ede9fe; color: var(--zone-territory); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;">Т→З</div>
+                <div><div style="font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace;">0.8 ч</div><div style="font-size: 10px; color: var(--text-muted);">территория → здание</div></div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: #dbeafe; color: var(--zone-building); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;">З→П</div>
+                <div><div style="font-size: 14px; font-weight: 700; font-family: 'JetBrains Mono', monospace;">1.6 ч</div><div style="font-size: 10px; color: var(--text-muted);">здание → производство</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Динамика среднего времени по дням</span>
+          <div class="card-actions">
+            <button class="card-action-btn active">По зонам</button>
+            <button class="card-action-btn">Общее</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding: 12px 22px;">
+          <svg viewBox="0 0 520 220" xmlns="http://www.w3.org/2000/svg" style="width: 100%; height: auto;">
+            <line x1="40" y1="180" x2="510" y2="180" stroke="#e5e7eb" stroke-width="1"/>
+            <line x1="40" y1="140" x2="510" y2="140" stroke="#f0f1f3" stroke-width="0.5" stroke-dasharray="4"/>
+            <line x1="40" y1="100" x2="510" y2="100" stroke="#f0f1f3" stroke-width="0.5" stroke-dasharray="4"/>
+            <line x1="40" y1="60" x2="510" y2="60" stroke="#f0f1f3" stroke-width="0.5" stroke-dasharray="4"/>
+            <line x1="40" y1="20" x2="510" y2="20" stroke="#f0f1f3" stroke-width="0.5" stroke-dasharray="4"/>
+            <text x="32" y="184" fill="#9ca3af" font-size="10" text-anchor="end" font-family="'JetBrains Mono'">0</text>
+            <text x="32" y="144" fill="#9ca3af" font-size="10" text-anchor="end" font-family="'JetBrains Mono'">3</text>
+            <text x="32" y="104" fill="#9ca3af" font-size="10" text-anchor="end" font-family="'JetBrains Mono'">6</text>
+            <text x="32" y="64" fill="#9ca3af" font-size="10" text-anchor="end" font-family="'JetBrains Mono'">9</text>
+            <text x="32" y="24" fill="#9ca3af" font-size="10" text-anchor="end" font-family="'JetBrains Mono'">12</text>
+            <text x="66" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">3</text>
+            <text x="118" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">5</text>
+            <text x="170" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">7</text>
+            <text x="222" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">10</text>
+            <text x="274" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">12</text>
+            <text x="326" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">14</text>
+            <text x="378" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">17</text>
+            <text x="430" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">19</text>
+            <text x="482" y="198" fill="#9ca3af" font-size="9" text-anchor="middle">21</text>
+            <text x="275" y="215" fill="#9ca3af" font-size="10" text-anchor="middle">Март 2026</text>
+            <rect x="95" y="15" width="48" height="170" fill="#f3f4f6" opacity="0.6" rx="3"/>
+            <rect x="199" y="15" width="48" height="170" fill="#f3f4f6" opacity="0.6" rx="3"/>
+            <rect x="303" y="15" width="48" height="170" fill="#f3f4f6" opacity="0.6" rx="3"/>
+            <rect x="407" y="15" width="48" height="170" fill="#f3f4f6" opacity="0.6" rx="3"/>
+            <text x="119" y="13" fill="#d1d5db" font-size="8" text-anchor="middle">вых</text>
+            <text x="223" y="13" fill="#d1d5db" font-size="8" text-anchor="middle">вых</text>
+            <text x="327" y="13" fill="#d1d5db" font-size="8" text-anchor="middle">вых</text>
+            <text x="431" y="13" fill="#d1d5db" font-size="8" text-anchor="middle">вых</text>
+            <polygon points="66,50 118,45 170,52 222,48 274,55 326,42 378,50 430,47 482,52 482,180 66,180" fill="#6366f1" opacity="0.06"/>
+            <polyline points="66,50 118,45 170,52 222,48 274,55 326,42 378,50 430,47 482,52" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <polygon points="66,60 118,55 170,62 222,58 274,65 326,52 378,60 430,57 482,62 482,180 66,180" fill="#2563eb" opacity="0.06"/>
+            <polyline points="66,60 118,55 170,62 222,58 274,65 326,52 378,60 430,57 482,62" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <polygon points="66,85 118,78 170,88 222,82 274,92 326,76 378,86 430,80 482,90 482,180 66,180" fill="#0891b2" opacity="0.06"/>
+            <polyline points="66,85 118,78 170,88 222,82 274,92 326,76 378,86 430,80 482,90" fill="none" stroke="#0891b2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            <rect x="340" y="2" width="8" height="8" rx="2" fill="#6366f1"/><text x="352" y="10" fill="#6b7280" font-size="10">Территория</text>
+            <rect x="410" y="2" width="8" height="8" rx="2" fill="#2563eb"/><text x="422" y="10" fill="#6b7280" font-size="10">Здание</text>
+            <rect x="462" y="2" width="8" height="8" rx="2" fill="#0891b2"/><text x="474" y="10" fill="#6b7280" font-size="10">Пр-во</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ HEATMAP WITH DAY PICKER ═══════════ -->
+    <div class="card grid-full">
+      <div class="card-header">
+        <span class="card-title">Тепловая карта: загрузка территории по часам</span>
+        <div class="card-actions">
+          <button class="card-action-btn active">Территория</button>
+          <button class="card-action-btn">Здание</button>
+          <button class="card-action-btn">Пр-во</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <!-- Day picker -->
+        <div class="heatmap-controls">
+          <span style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-right: 4px;">День:</span>
+          <button class="heatmap-day-btn active">Все дни</button>
+          <span style="width: 1px; height: 20px; background: var(--border); margin: 0 2px;"></span>
+          <button class="heatmap-day-btn">Пн 02</button>
+          <button class="heatmap-day-btn">Вт 03</button>
+          <button class="heatmap-day-btn">Ср 04</button>
+          <button class="heatmap-day-btn">Чт 05</button>
+          <button class="heatmap-day-btn">Пт 06</button>
+          <button class="heatmap-day-btn weekend">Сб 07</button>
+          <button class="heatmap-day-btn weekend">Вс 08</button>
+          <span style="width: 1px; height: 20px; background: var(--border); margin: 0 2px;"></span>
+          <button class="heatmap-day-btn">Пн 09</button>
+          <button class="heatmap-day-btn">Вт 10</button>
+          <button class="heatmap-day-btn">…</button>
+          <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;">или выберите дату в календаре ↓</span>
+        </div>
+
+        <!-- Aggregated heatmap (all days, same as before) -->
+        <div class="heatmap-grid">
+          <div class="heatmap-header"></div>
+          <div class="heatmap-header">0</div><div class="heatmap-header">1</div><div class="heatmap-header">2</div><div class="heatmap-header">3</div>
+          <div class="heatmap-header">4</div><div class="heatmap-header">5</div><div class="heatmap-header">6</div><div class="heatmap-header">7</div>
+          <div class="heatmap-header">8</div><div class="heatmap-header">9</div><div class="heatmap-header">10</div><div class="heatmap-header">11</div>
+          <div class="heatmap-header">12</div><div class="heatmap-header">13</div><div class="heatmap-header">14</div><div class="heatmap-header">15</div>
+          <div class="heatmap-header">16</div><div class="heatmap-header">17</div><div class="heatmap-header">18</div><div class="heatmap-header">19</div>
+          <div class="heatmap-header">20</div><div class="heatmap-header">21</div><div class="heatmap-header">22</div><div class="heatmap-header">23</div>
+
+          <!-- Пн -->
+          <div class="heatmap-row-label">Пн</div>
+          <div class="heatmap-cell" data-count="1" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="8" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="22" style="background:#93c5fd"></div>
+          <div class="heatmap-cell" data-count="38" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="44" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="46" style="background:#1e40af"></div><div class="heatmap-cell" data-count="46" style="background:#1e40af"></div>
+          <div class="heatmap-cell" data-count="30" style="background:#60a5fa"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="43" style="background:#1d4ed8"></div>
+          <div class="heatmap-cell" data-count="35" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="20" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="8" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="3" style="background:#eff6ff"></div>
+          <div class="heatmap-cell" data-count="1" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+
+          <!-- Вт -->
+          <div class="heatmap-row-label">Вт</div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="1" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="7" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="24" style="background:#93c5fd"></div>
+          <div class="heatmap-cell" data-count="40" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="47" style="background:#1e3a8a"></div><div class="heatmap-cell" data-count="47" style="background:#1e3a8a"></div>
+          <div class="heatmap-cell" data-count="28" style="background:#60a5fa"></div><div class="heatmap-cell" data-count="47" style="background:#1e3a8a"></div><div class="heatmap-cell" data-count="46" style="background:#1e40af"></div><div class="heatmap-cell" data-count="44" style="background:#1d4ed8"></div>
+          <div class="heatmap-cell" data-count="36" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="21" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="7" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+
+          <!-- Ср -->
+          <div class="heatmap-row-label">Ср</div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="6" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="20" style="background:#93c5fd"></div>
+          <div class="heatmap-cell" data-count="39" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="43" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="44" style="background:#1e40af"></div>
+          <div class="heatmap-cell" data-count="25" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="44" style="background:#1e40af"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="42" style="background:#1d4ed8"></div>
+          <div class="heatmap-cell" data-count="34" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="18" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="6" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+
+          <!-- Чт -->
+          <div class="heatmap-row-label">Чт</div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="1" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="7" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="19" style="background:#60a5fa"></div>
+          <div class="heatmap-cell" data-count="38" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="44" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="46" style="background:#1e40af"></div><div class="heatmap-cell" data-count="47" style="background:#1e3a8a"></div>
+          <div class="heatmap-cell" data-count="26" style="background:#60a5fa"></div><div class="heatmap-cell" data-count="47" style="background:#1e3a8a"></div><div class="heatmap-cell" data-count="45" style="background:#1e40af"></div><div class="heatmap-cell" data-count="43" style="background:#1d4ed8"></div>
+          <div class="heatmap-cell" data-count="35" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="18" style="background:#60a5fa"></div><div class="heatmap-cell" data-count="7" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+
+          <!-- Пт -->
+          <div class="heatmap-row-label">Пт</div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="6" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="18" style="background:#93c5fd"></div>
+          <div class="heatmap-cell" data-count="37" style="background:#3b82f6"></div><div class="heatmap-cell" data-count="42" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="43" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="44" style="background:#1e40af"></div>
+          <div class="heatmap-cell" data-count="22" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="43" style="background:#1e40af"></div><div class="heatmap-cell" data-count="42" style="background:#1d4ed8"></div><div class="heatmap-cell" data-count="38" style="background:#3b82f6"></div>
+          <div class="heatmap-cell" data-count="28" style="background:#93c5fd"></div><div class="heatmap-cell" data-count="14" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="4" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="1" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="0" style="background:#f8fafc"></div>
+
+          <!-- Сб -->
+          <div class="heatmap-row-label" style="color: var(--text-muted)">Сб</div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" data-count="4" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="6" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="6" style="background:#dbeafe"></div><div class="heatmap-cell" data-count="4" style="background:#eff6ff"></div>
+          <div class="heatmap-cell" data-count="2" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+
+          <!-- Вс -->
+          <div class="heatmap-row-label" style="color: var(--text-muted)">Вс</div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div><div class="heatmap-cell" data-count="2" style="background:#eff6ff"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+          <div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div><div class="heatmap-cell" style="background:#f8fafc"></div>
+        </div>
+
+        <div class="heatmap-legend">
+          <span class="heatmap-legend-label">0 чел</span>
+          <div class="heatmap-legend-bar">
+            <span style="background: #f8fafc"></span><span style="background: #eff6ff"></span><span style="background: #dbeafe"></span>
+            <span style="background: #93c5fd"></span><span style="background: #60a5fa"></span><span style="background: #3b82f6"></span>
+            <span style="background: #1d4ed8"></span><span style="background: #1e40af"></span><span style="background: #1e3a8a"></span>
+          </div>
+          <span class="heatmap-legend-label">47 чел</span>
+        </div>
+
+        <!-- Day detail row — shown when specific day selected -->
+        <div class="day-detail-row">
+          <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+            <strong style="color: var(--text-primary);">При выборе конкретного дня</strong> здесь отобразится:<br>
+            количество людей на территории по часам, пиковое время, первый/последний проход, аномалии.
+          </div>
+          <div style="margin-left: auto; display: flex; gap: 20px;">
+            <div class="day-detail-stat"><div class="val" style="color: var(--zone-territory);">44</div><div class="lbl">пик чел/час</div></div>
+            <div class="day-detail-stat"><div class="val">07:12</div><div class="lbl">первый проход</div></div>
+            <div class="day-detail-stat"><div class="val">19:48</div><div class="lbl">последний проход</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ EMPLOYEE CALENDAR ═══════════ -->
+    <div class="section-label">Календарь сотрудника</div>
+    <div class="card grid-full">
+      <div class="card-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span class="card-title">Иванов А. С.</span>
+          <span style="font-size: 12px; color: var(--text-muted);">· Мастер участка · Цех №1 — Сборка</span>
+        </div>
+        <div class="card-actions">
+          <button class="card-action-btn">◀ Фев</button>
+          <button class="card-action-btn active">Март 2026</button>
+          <button class="card-action-btn" style="opacity: 0.4;">Апр ▶</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="calendar-container">
+          <div class="calendar-grid-wrap">
+            <div class="calendar-grid">
+              <!-- Headers -->
+              <div class="cal-header">Пн</div>
+              <div class="cal-header">Вт</div>
+              <div class="cal-header">Ср</div>
+              <div class="cal-header">Чт</div>
+              <div class="cal-header">Пт</div>
+              <div class="cal-header" style="color: var(--red);">Сб</div>
+              <div class="cal-header" style="color: var(--red);">Вс</div>
+
+              <!-- Week 1: empty, empty, empty, empty, empty, empty, 1 -->
+              <div class="cal-day empty"></div>
+              <div class="cal-day empty"></div>
+              <div class="cal-day empty"></div>
+              <div class="cal-day empty"></div>
+              <div class="cal-day empty"></div>
+              <div class="cal-day empty"></div>
+              <div class="cal-day weekend"><div class="day-num">1</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+
+              <!-- Week 2: 2-8 -->
+              <div class="cal-day hrs-norm"><div class="day-num">2</div><div class="day-hours">9.8</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">3</div><div class="day-hours">10.1</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">4</div><div class="day-hours">9.5</div></div>
+              <div class="cal-day hrs-high"><div class="day-num">5</div><div class="day-hours">11.2</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">6</div><div class="day-hours">9.3</div></div>
+              <div class="cal-day weekend"><div class="day-num">7</div><div class="day-hours" style="color: var(--text-muted);">2.1</div></div>
+              <div class="cal-day weekend"><div class="day-num">8</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+
+              <!-- Week 3: 9-15 -->
+              <div class="cal-day hrs-norm"><div class="day-num">9</div><div class="day-hours">9.7</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">10</div><div class="day-hours">9.4</div></div>
+              <div class="cal-day hrs-low"><div class="day-num">11</div><div class="day-hours">6.2</div></div>
+              <div class="cal-day sick"><div class="day-num">12</div><div class="day-status">Б/Л</div></div>
+              <div class="cal-day sick"><div class="day-num">13</div><div class="day-status">Б/Л</div></div>
+              <div class="cal-day weekend"><div class="day-num">14</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day weekend"><div class="day-num">15</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+
+              <!-- Week 4: 16-22 -->
+              <div class="cal-day hrs-norm"><div class="day-num">16</div><div class="day-hours">9.6</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">17</div><div class="day-hours">10.0</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">18</div><div class="day-hours">9.2</div></div>
+              <div class="cal-day hrs-high"><div class="day-num">19</div><div class="day-hours">10.8</div></div>
+              <div class="cal-day hrs-norm"><div class="day-num">20</div><div class="day-hours">9.1</div></div>
+              <div class="cal-day weekend"><div class="day-num">21</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day weekend"><div class="day-num">22</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+
+              <!-- Week 5: 23-29 -->
+              <div class="cal-day hrs-norm today"><div class="day-num">23</div><div class="day-hours">7.4</div></div>
+              <div class="cal-day future"><div class="day-num">24</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future"><div class="day-num">25</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future"><div class="day-num">26</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future"><div class="day-num">27</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future weekend"><div class="day-num">28</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future weekend"><div class="day-num">29</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+
+              <!-- Week 6: 30-31 -->
+              <div class="cal-day future"><div class="day-num">30</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day future"><div class="day-num">31</div><div class="day-hours" style="color: var(--text-muted);">—</div></div>
+              <div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div><div class="cal-day empty"></div>
+            </div>
+          </div>
+
+          <!-- Sidebar: legend + stats -->
+          <div class="cal-sidebar">
+            <div class="cal-legend">
+              <div class="cal-legend-title">Обозначения</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: #ecfdf5; border-color: #a7f3d0;"></div> 8–10 ч — в норме</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: #dbeafe; border-color: #93c5fd;"></div> &gt;10 ч — переработка</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: #fef3c7; border-color: #fcd34d;"></div> 4–8 ч — мало</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: #fef2f2; border-color: #fca5a5;"></div> &lt;4 ч — критически мало</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: repeating-linear-gradient(135deg, #fef2f2, #fef2f2 3px, #fecaca 3px, #fecaca 4px); border-color: #fca5a5;"></div> Больничный</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: repeating-linear-gradient(135deg, #eff6ff, #eff6ff 3px, #bfdbfe 3px, #bfdbfe 4px); border-color: #93c5fd;"></div> Отпуск</div>
+              <div class="cal-legend-item"><div class="cal-legend-swatch" style="background: var(--surface-alt);"></div> Выходной</div>
+            </div>
+
+            <div class="cal-stat-card">
+              <div class="cal-stat-label">Факт за март (СКУД)</div>
+              <div class="cal-stat-value">139.3 <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">ч</span></div>
+              <div class="cal-stat-sub">из 15 раб. дней отработано 14</div>
+            </div>
+            <div class="cal-stat-card">
+              <div class="cal-stat-label">Среднее в день</div>
+              <div class="cal-stat-value" style="color: var(--green);">9.6 <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">ч</span></div>
+              <div class="cal-stat-sub">без учёта больничного</div>
+            </div>
+            <div class="cal-stat-card" style="border-style: dashed; opacity: 0.5;">
+              <div class="cal-stat-label">Норма по договору</div>
+              <div class="cal-stat-value" style="color: var(--text-muted);">— <span style="font-size: 14px;">ч</span></div>
+              <div class="cal-stat-sub">будет добавлено</div>
+            </div>
+            <div class="cal-stat-card" style="border-style: dashed; opacity: 0.5;">
+              <div class="cal-stat-label">Норма по табелю</div>
+              <div class="cal-stat-value" style="color: var(--text-muted);">— <span style="font-size: 14px;">ч</span></div>
+              <div class="cal-stat-sub">договор − б/л − отпуск</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ DETAIL TABLE ═══════════ -->
+    <div class="section-label">Детализация по сотрудникам</div>
+    <div class="card grid-full">
+      <div class="card-header">
+        <span class="card-title">Сотрудники · ПЛ «Северная» · Цех №1 — Сборка</span>
+        <div class="card-actions"><button class="card-action-btn">Экспорт ↗</button></div>
+      </div>
+      <div class="card-body" style="padding: 0;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 220px;">Сотрудник</th>
+              <th class="right">Территория</th>
+              <th class="right">Здание</th>
+              <th class="right">Пр-во</th>
+              <th style="width: 140px;">Распределение</th>
+              <th class="right" style="opacity: 0.4;">Норма дог.</th>
+              <th class="right" style="opacity: 0.4;">Норма таб.</th>
+              <th>Статус</th>
+              <th class="right">Дней</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #dbeafe; color: #2563eb;">ИА</div><div><div class="emp-name">Иванов А. С.</div><div class="emp-dept">Мастер участка</div></div></div></td>
+              <td class="right mono">9.8</td><td class="right mono">9.1</td><td class="right mono">7.4</td>
+              <td><div class="mini-bar"><span style="width: 24%; background: var(--zone-territory);"></span><span style="width: 18%; background: var(--zone-building);"></span><span style="width: 58%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge ok">● В норме</span></td><td class="right mono">16</td>
+            </tr>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #fce7f3; color: #db2777;">ПМ</div><div><div class="emp-name">Петрова М. В.</div><div class="emp-dept">Оператор ЧПУ</div></div></div></td>
+              <td class="right mono">8.5</td><td class="right mono">8.2</td><td class="right mono">7.8</td>
+              <td><div class="mini-bar"><span style="width: 8%; background: var(--zone-territory);"></span><span style="width: 5%; background: var(--zone-building);"></span><span style="width: 87%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge ok">● В норме</span></td><td class="right mono">16</td>
+            </tr>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #fef3c7; color: #d97706;">СК</div><div><div class="emp-name">Сидоров К. Д.</div><div class="emp-dept">Сборщик</div></div></div></td>
+              <td class="right mono">7.1</td><td class="right mono">6.5</td><td class="right mono">4.2</td>
+              <td><div class="mini-bar"><span style="width: 40%; background: var(--zone-territory);"></span><span style="width: 33%; background: var(--zone-building);"></span><span style="width: 27%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge warn">● Отклонение</span></td><td class="right mono">14</td>
+            </tr>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #ecfdf5; color: #059669;">КН</div><div><div class="emp-name">Козлов Н. И.</div><div class="emp-dept">Сборщик</div></div></div></td>
+              <td class="right mono">9.3</td><td class="right mono">8.8</td><td class="right mono">7.1</td>
+              <td><div class="mini-bar"><span style="width: 23%; background: var(--zone-territory);"></span><span style="width: 19%; background: var(--zone-building);"></span><span style="width: 58%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge ok">● В норме</span></td><td class="right mono">16</td>
+            </tr>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #fef2f2; color: #dc2626;">АВ</div><div><div class="emp-name">Алексеев В. Г.</div><div class="emp-dept">Наладчик</div></div></div></td>
+              <td class="right mono">5.4</td><td class="right mono">5.1</td><td class="right mono">3.8</td>
+              <td><div class="mini-bar"><span style="width: 28%; background: var(--zone-territory);"></span><span style="width: 23%; background: var(--zone-building);"></span><span style="width: 49%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge low">● Низкое</span></td><td class="right mono">10</td>
+            </tr>
+            <tr>
+              <td><div class="emp-cell"><div class="emp-avatar" style="background: #f3e8ff; color: #7c3aed;">ВЕ</div><div><div class="emp-name">Волкова Е. А.</div><div class="emp-dept">Контролёр ОТК</div></div></div></td>
+              <td class="right mono">8.9</td><td class="right mono">8.7</td><td class="right mono">6.5</td>
+              <td><div class="mini-bar"><span style="width: 9%; background: var(--zone-territory);"></span><span style="width: 26%; background: var(--zone-building);"></span><span style="width: 65%; background: var(--zone-production);"></span></div></td>
+              <td class="right"><span class="norm-col-placeholder">—</span></td><td class="right"><span class="norm-col-placeholder">—</span></td>
+              <td><span class="status-badge ok">● В норме</span></td><td class="right mono">15</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      Данные СКУД обновлены 23.03.2026 08:00 · Колонки «Норма» и статусы больничных/отпусков будут дополнены после интеграции с кадровой системой · Прототип v2
+    </div>
+  </div>
+</body>
+</html>
