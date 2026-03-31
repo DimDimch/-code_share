@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Analytics · Brief</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0e1117;
+    --ink2: #2a2f3d;
+    --muted: #7a8099;
+    --dim: #c2c7d8;
+    --paper: #f5f4f0;
+    --white: #ffffff;
+    --rule: #e0ddd6;
+
+```
+--accent: #e8341a;
+--accent2: #1a4de8;
+--accent3: #1aae6b;
+--accent4: #9b1ae8;
+--accent5: #e88b1a;
+
+--slide-w: 900px;
+```
+
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+font-family: ‘DM Sans’, sans-serif;
+background: var(–ink);
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: flex-start;
+min-height: 100vh;
+padding: 0;
+overflow: hidden;
+}
+
+/* ── CHROME ── */
+#chrome {
+position: fixed;
+top: 0; left: 0; right: 0;
+z-index: 100;
+background: var(–ink2);
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 0 20px;
+height: 40px;
+border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.chrome-left {
+font-family: ‘DM Mono’, monospace;
+font-size: 11px;
+color: rgba(255,255,255,0.3);
+letter-spacing: 0.5px;
+}
+.chrome-center {
+display: flex;
+gap: 6px;
+align-items: center;
+}
+.dot-nav {
+width: 7px; height: 7px;
+border-radius: 50%;
+background: rgba(255,255,255,0.12);
+cursor: pointer;
+transition: background 0.2s, transform 0.2s;
+}
+.dot-nav.active { background: rgba(255,255,255,0.7); transform: scale(1.3); }
+.dot-nav:hover:not(.active) { background: rgba(255,255,255,0.3); }
+
+.chrome-right {
+display: flex;
+gap: 8px;
+}
+.chrome-btn {
+font-family: ‘DM Sans’, sans-serif;
+font-size: 11px;
+font-weight: 500;
+color: rgba(255,255,255,0.4);
+background: none;
+border: 1px solid rgba(255,255,255,0.1);
+border-radius: 4px;
+padding: 3px 10px;
+cursor: pointer;
+transition: all 0.15s;
+}
+.chrome-btn:hover { color: white; border-color: rgba(255,255,255,0.3); }
+
+/* ── STAGE ── */
+#stage {
+position: fixed;
+top: 40px; left: 0; right: 0; bottom: 0;
+overflow: hidden;
+}
+
+/* ── SLIDES ── */
+.slide {
+position: absolute;
+top: 0; left: 0; right: 0; bottom: 0;
+display: flex;
+align-items: center;
+justify-content: center;
+padding: 32px 24px;
+opacity: 0;
+pointer-events: none;
+transform: translateX(40px);
+transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.slide.active {
+opacity: 1;
+pointer-events: all;
+transform: translateX(0);
+}
+.slide.prev {
+opacity: 0;
+transform: translateX(-40px);
+}
+
+.card {
+background: var(–paper);
+border-radius: 16px;
+width: 100%;
+max-width: var(–slide-w);
+max-height: calc(100vh - 40px - 64px);
+overflow-y: auto;
+overflow-x: hidden;
+scrollbar-width: thin;
+scrollbar-color: var(–dim) transparent;
+}
+.card::-webkit-scrollbar { width: 4px; }
+.card::-webkit-scrollbar-thumb { background: var(–dim); border-radius: 2px; }
+
+/* ── SLIDE LAYOUTS ── */
+
+/* Cover */
+.slide-cover .card {
+background: var(–ink);
+padding: 60px 64px 52px;
+position: relative;
+overflow: hidden;
+}
+.cover-stripe {
+position: absolute;
+top: 0; left: 0;
+width: 5px; height: 100%;
+background: var(–accent);
+}
+.cover-tag {
+font-family: ‘DM Mono’, monospace;
+font-size: 10px;
+color: var(–accent);
+letter-spacing: 2px;
+text-transform: uppercase;
+margin-bottom: 28px;
+}
+.cover-title {
+font-family: ‘Playfair Display’, serif;
+font-size: 52px;
+font-weight: 800;
+color: white;
+line-height: 1.0;
+letter-spacing: -1px;
+margin-bottom: 8px;
+}
+.cover-title span { color: var(–accent); }
+.cover-sub {
+font-size: 16px;
+font-weight: 300;
+color: rgba(255,255,255,0.45);
+margin-bottom: 48px;
+}
+.cover-agenda {
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 12px;
+}
+.agenda-item {
+background: rgba(255,255,255,0.05);
+border: 1px solid rgba(255,255,255,0.08);
+border-radius: 10px;
+padding: 14px 16px;
+cursor: pointer;
+transition: all 0.15s;
+}
+.agenda-item:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); }
+.agenda-num {
+font-family: ‘DM Mono’, monospace;
+font-size: 10px;
+color: rgba(255,255,255,0.25);
+margin-bottom: 6px;
+}
+.agenda-label {
+font-size: 13px;
+font-weight: 500;
+color: rgba(255,255,255,0.75);
+line-height: 1.3;
+}
+.agenda-dot {
+display: inline-block;
+width: 6px; height: 6px;
+border-radius: 50%;
+margin-right: 6px;
+vertical-align: middle;
+margin-bottom: 1px;
+}
+
+/* Standard content slide */
+.slide-content .card {
+padding: 44px 52px 48px;
+}
+
+.slide-eyebrow {
+display: flex;
+align-items: center;
+gap: 10px;
+margin-bottom: 6px;
+}
+.slide-num {
+font-family: ‘DM Mono’, monospace;
+font-size: 10px;
+color: var(–muted);
+letter-spacing: 1px;
+}
+.slide-tag-label {
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 1px;
+text-transform: uppercase;
+padding: 2px 8px;
+border-radius: 3px;
+color: white;
+}
+h2.slide-title {
+font-family: ‘Playfair Display’, serif;
+font-size: 34px;
+font-weight: 800;
+color: var(–ink);
+line-height: 1.1;
+letter-spacing: -0.5px;
+margin-bottom: 6px;
+}
+.slide-lead {
+font-size: 14px;
+color: var(–muted);
+font-weight: 400;
+margin-bottom: 28px;
+line-height: 1.5;
+max-width: 560px;
+}
+
+hr.divider {
+border: none;
+border-top: 1px solid var(–rule);
+margin: 20px 0;
+}
+
+/* Points */
+.points { display: flex; flex-direction: column; gap: 12px; }
+.point {
+display: flex;
+gap: 14px;
+align-items: flex-start;
+padding: 14px 16px;
+background: white;
+border-radius: 10px;
+border: 1px solid var(–rule);
+}
+.point-icon {
+font-size: 20px;
+flex-shrink: 0;
+margin-top: 1px;
+line-height: 1;
+}
+.point-body {}
+.point-title {
+font-size: 14px;
+font-weight: 600;
+color: var(–ink);
+margin-bottom: 3px;
+}
+.point-desc {
+font-size: 12.5px;
+color: var(–muted);
+line-height: 1.55;
+}
+.point-tag {
+display: inline-block;
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 0.5px;
+padding: 2px 7px;
+border-radius: 4px;
+margin-top: 6px;
+}
+
+/* Two col */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.col-card {
+background: white;
+border: 1px solid var(–rule);
+border-radius: 10px;
+padding: 16px 18px;
+}
+.col-card h3 {
+font-size: 13px;
+font-weight: 700;
+color: var(–ink);
+margin-bottom: 10px;
+}
+.col-item {
+font-size: 12.5px;
+color: var(–muted);
+padding: 5px 0;
+border-bottom: 1px solid var(–rule);
+line-height: 1.4;
+display: flex;
+align-items: flex-start;
+gap: 8px;
+}
+.col-item:last-child { border-bottom: none; }
+.col-item-dot { color: var(–dim); flex-shrink: 0; margin-top: 1px; }
+
+/* Status pills */
+.pill {
+display: inline-block;
+font-size: 10px;
+font-weight: 700;
+padding: 2px 8px;
+border-radius: 20px;
+letter-spacing: 0.3px;
+}
+.pill-green { background: #e8f8f0; color: #1aae6b; }
+.pill-yellow { background: #fef9e7; color: #c47d00; }
+.pill-red { background: #fdecea; color: #c9241a; }
+.pill-blue { background: #e8effe; color: #1a4de8; }
+.pill-purple { background: #f3effe; color: #7b1ae8; }
+
+/* Timeline / flow */
+.flow { display: flex; gap: 0; flex-wrap: wrap; }
+.flow-step {
+display: flex;
+align-items: center;
+gap: 0;
+}
+.flow-box {
+background: white;
+border: 1px solid var(–rule);
+border-radius: 8px;
+padding: 10px 14px;
+font-size: 12.5px;
+font-weight: 500;
+color: var(–ink2);
+text-align: center;
+min-width: 110px;
+}
+.flow-arrow {
+font-size: 16px;
+color: var(–dim);
+padding: 0 6px;
+}
+
+/* Highlight box */
+.highlight-box {
+background: var(–ink);
+border-radius: 10px;
+padding: 16px 20px;
+display: flex;
+gap: 14px;
+align-items: flex-start;
+margin-top: 16px;
+}
+.highlight-box p {
+font-size: 13px;
+color: rgba(255,255,255,0.7);
+line-height: 1.55;
+}
+.highlight-box strong { color: white; }
+
+/* Metric grid */
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.metric-card {
+background: white;
+border: 1px solid var(–rule);
+border-radius: 10px;
+padding: 14px 16px;
+}
+.metric-card-domain {
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 0.8px;
+text-transform: uppercase;
+color: var(–muted);
+margin-bottom: 8px;
+}
+.metric-card-count {
+font-family: ‘Playfair Display’, serif;
+font-size: 32px;
+font-weight: 700;
+color: var(–ink);
+line-height: 1;
+margin-bottom: 2px;
+}
+.metric-card-label { font-size: 12px; color: var(–muted); }
+.metric-mini-bar { display: flex; gap: 3px; margin-top: 10px; }
+.mini-seg { height: 4px; border-radius: 2px; flex-grow: 1; }
+
+/* Interaction formats */
+.format-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.format-card {
+background: white;
+border: 1px solid var(–rule);
+border-radius: 10px;
+padding: 16px 18px;
+position: relative;
+}
+.format-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.format-icon { font-size: 22px; line-height: 1; }
+.format-title { font-size: 13px; font-weight: 700; color: var(–ink); }
+.format-desc { font-size: 12px; color: var(–muted); line-height: 1.5; }
+.format-badge {
+position: absolute;
+top: 12px; right: 12px;
+}
+
+/* ── NAV ARROWS ── */
+.nav-arrow {
+position: fixed;
+top: 50%;
+transform: translateY(-50%);
+background: rgba(255,255,255,0.06);
+border: 1px solid rgba(255,255,255,0.1);
+color: rgba(255,255,255,0.5);
+width: 36px; height: 60px;
+border-radius: 8px;
+cursor: pointer;
+font-size: 18px;
+display: flex;
+align-items: center;
+justify-content: center;
+transition: all 0.15s;
+z-index: 50;
+}
+.nav-arrow:hover { background: rgba(255,255,255,0.12); color: white; }
+.nav-arrow.left { left: 12px; }
+.nav-arrow.right { right: 12px; }
+.nav-arrow:disabled { opacity: 0.2; pointer-events: none; }
+
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(12px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fadeUp 0.4s ease forwards; }
+.fade-up-d1 { animation-delay: 0.05s; opacity: 0; }
+.fade-up-d2 { animation-delay: 0.12s; opacity: 0; }
+.fade-up-d3 { animation-delay: 0.19s; opacity: 0; }
+.fade-up-d4 { animation-delay: 0.26s; opacity: 0; }
+.fade-up-d5 { animation-delay: 0.33s; opacity: 0; }
+.fade-up-d6 { animation-delay: 0.40s; opacity: 0; }
+</style>
+
+</head>
+<body>
+
+<!-- CHROME -->
+
+<div id="chrome">
+  <div class="chrome-left">HR ANALYTICS · BRIEF · 2026</div>
+  <div class="chrome-center" id="dotNav"></div>
+  <div class="chrome-right">
+    <button class="chrome-btn" onclick="goTo(0)">Начало</button>
+    <span id="slideCounter" style="font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,0.3);padding:3px 10px;">1 / 7</span>
+  </div>
+</div>
+
+<!-- NAV -->
+
+<button class="nav-arrow left" id="btnPrev" onclick="prev()">‹</button>
+<button class="nav-arrow right" id="btnNext" onclick="next()">›</button>
+
+<!-- STAGE -->
+
+<div id="stage">
+
+  <!-- ── SLIDE 0: COVER ── -->
+
+  <div class="slide slide-cover active" data-index="0">
+    <div class="card">
+      <div class="cover-stripe"></div>
+      <div class="cover-tag">Встреча · HRVP · 30 мин</div>
+      <div class="cover-title">HR<br>Analytics<br><span>Roadmap</span></div>
+      <div class="cover-sub">Где мы сейчас и куда движемся</div>
+      <div class="cover-agenda">
+        <div class="agenda-item" onclick="goTo(1)">
+          <div class="agenda-num">01</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#e8341a"></span>Текущая BI-картина</div>
+        </div>
+        <div class="agenda-item" onclick="goTo(2)">
+          <div class="agenda-num">02</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#1a4de8"></span>Дерево HR-метрик</div>
+        </div>
+        <div class="agenda-item" onclick="goTo(3)">
+          <div class="agenda-num">03</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#1aae6b"></span>СКУД-аналитика</div>
+        </div>
+        <div class="agenda-item" onclick="goTo(4)">
+          <div class="agenda-num">04</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#9b1ae8"></span>GenBI на Потоке</div>
+        </div>
+        <div class="agenda-item" onclick="goTo(5)">
+          <div class="agenda-num">05</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#e88b1a"></span>Data Self-Service</div>
+        </div>
+        <div class="agenda-item" onclick="goTo(6)">
+          <div class="agenda-num">06</div>
+          <div class="agenda-label"><span class="agenda-dot" style="background:#fff"></span>Формат взаимодействия</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 1: ТЕКУЩАЯ КАРТИНА ── -->
+
+  <div class="slide slide-content" data-index="1">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">01 / 06</span>
+        <span class="slide-tag-label" style="background:#e8341a">Состояние</span>
+      </div>
+      <h2 class="slide-title">Где мы сейчас</h2>
+      <div class="slide-lead">Честная картина — что работает, что нет, где разрывы</div>
+      <div class="two-col">
+        <div class="col-card">
+          <h3>✅ Что уже есть</h3>
+          <div class="col-item"><span class="col-item-dot">—</span>HR-метрики для руководителей (численность, зарплата, текучесть)</div>
+          <div class="col-item"><span class="col-item-dot">—</span>Дашборд качества данных «Потока» (рекрутмент)</div>
+          <div class="col-item"><span class="col-item-dot">—</span>СКУД-аналитика присутствия на территории</div>
+          <div class="col-item"><span class="col-item-dot">—</span>Локальные LLM по API — инфраструктура есть</div>
+        </div>
+        <div class="col-card">
+          <h3>⚠️ Что не работает</h3>
+          <div class="col-item"><span class="col-item-dot">—</span>Метрики без контекста — нет бенчмарков, нет «что делать»</div>
+          <div class="col-item"><span class="col-item-dot">—</span>Performance score — в Excel, не в SQL</div>
+          <div class="col-item"><span class="col-item-dot">—</span>Нет связи между доменами: найм ↔ текучесть ↔ performance</div>
+          <div class="col-item"><span class="col-item-dot">—</span>Исторические данные грязные — обучение моделей пока не вариант</div>
+        </div>
+      </div>
+      <div class="highlight-box">
+        <span style="font-size:24px">💡</span>
+        <p>Данные <strong>есть</strong> — но они не превращаются в действия. Руководитель смотрит на цифры и не знает, хорошо это или плохо, и что делать дальше.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 2: ДЕРЕВО МЕТРИК ── -->
+
+  <div class="slide slide-content" data-index="2">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">02 / 06</span>
+        <span class="slide-tag-label" style="background:#1a4de8">Метрики</span>
+      </div>
+      <h2 class="slide-title">Дерево HR-метрик</h2>
+      <div class="slide-lead">35 метрик по 4 доменам — с формулами, источниками, приоритетами</div>
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-card-domain" style="color:#1a4de8">Рекрутмент</div>
+          <div class="metric-card-count" style="color:#1a4de8">10</div>
+          <div class="metric-card-label">метрик</div>
+          <div class="metric-mini-bar">
+            <div class="mini-seg" style="background:#1aae6b;width:20%"></div>
+            <div class="mini-seg" style="background:#e88b1a;width:60%"></div>
+            <div class="mini-seg" style="background:#e8341a;width:20%"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-domain" style="color:#e8341a">Удержание / Отток</div>
+          <div class="metric-card-count" style="color:#e8341a">9</div>
+          <div class="metric-card-label">метрик</div>
+          <div class="metric-mini-bar">
+            <div class="mini-seg" style="background:#1aae6b;width:22%"></div>
+            <div class="mini-seg" style="background:#e88b1a;width:55%"></div>
+            <div class="mini-seg" style="background:#e8341a;width:23%"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-card-domain" style="color:#1aae6b">Состав и структура</div>
+          <div class="metric-card-count" style="color:#1aae6b">7</div>
+          <div class="metric-card-label">метрик</div>
+          <div class="metric-mini-bar">
+            <div class="mini-seg" style="background:#1aae6b;width:57%"></div>
+            <div class="mini-seg" style="background:#e88b1a;width:28%"></div>
+            <div class="mini-seg" style="background:#e8341a;width:15%"></div>
+          </div>
+        </div>
+        <div class="metric-card" style="grid-column:1/3">
+          <div class="metric-card-domain" style="color:#9b1ae8">Performance</div>
+          <div class="metric-card-count" style="color:#9b1ae8">5</div>
+          <div class="metric-card-label">метрик · приоритет: перенести score из Excel в SQL</div>
+          <div class="metric-mini-bar">
+            <div class="mini-seg" style="background:#e88b1a;width:20%"></div>
+            <div class="mini-seg" style="background:#e8341a;width:80%"></div>
+          </div>
+        </div>
+        <div class="metric-card" style="background:var(--ink);border-color:transparent">
+          <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-bottom:6px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase">Легенда</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="pill pill-green">Готово</span>
+            <span class="pill pill-yellow">~ Частично</span>
+            <span class="pill pill-red">Строить</span>
+          </div>
+        </div>
+      </div>
+      <div class="highlight-box" style="margin-top:14px">
+        <span style="font-size:22px">→</span>
+        <p><strong>Быстрый выигрыш:</strong> добавить бенчмарк-слой (среднее по компании) к каждой метрике в отчёте руководителей + LLM-комментарий «что это значит»</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 3: СКУД ── -->
+
+  <div class="slide slide-content" data-index="3">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">03 / 06</span>
+        <span class="slide-tag-label" style="background:#1aae6b">СКУД</span>
+      </div>
+      <h2 class="slide-title">Аналитика присутствия</h2>
+      <div class="slide-lead">СКУД → структурированная отчётность по нахождению сотрудников на предприятии</div>
+      <div class="points">
+        <div class="point fade-up fade-up-d1">
+          <div class="point-icon">🏭</div>
+          <div class="point-body">
+            <div class="point-title">Что уже построено</div>
+            <div class="point-desc">Методология расчёта присутствия по вложенным зонам (территория → здание → производственный участок). Правила инференса пропущенных событий, уровни доверия к данным.</div>
+            <span class="pill pill-green" style="margin-top:6px;display:inline-block">Методология готова</span>
+          </div>
+        </div>
+        <div class="point fade-up fade-up-d2">
+          <div class="point-icon">📊</div>
+          <div class="point-body">
+            <div class="point-title">Что можно добавить</div>
+            <div class="point-desc">Отчёт для HR — присутствие в разрезе подразделений, отклонения от графика, аномалии (группы прибытия, пропуски). Сигналы для HR BP: сотрудник отсутствовал N дней подряд без отметки в системе.</div>
+            <span class="pill pill-yellow" style="margin-top:6px;display:inline-block">В разработке</span>
+          </div>
+        </div>
+        <div class="point fade-up fade-up-d3">
+          <div class="point-icon">🔗</div>
+          <div class="point-body">
+            <div class="point-title">Связь с HR-данными</div>
+            <div class="point-desc">СКУД × кадровая система — сопоставить присутствие с подразделением, графиком работы, статусом сотрудника. Потенциал: ранние сигналы риска оттока через изменение паттернов присутствия.</div>
+            <span class="pill pill-blue" style="margin-top:6px;display:inline-block">Идея для обсуждения</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 4: GENBI ── -->
+
+  <div class="slide slide-content" data-index="4">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">04 / 06</span>
+        <span class="slide-tag-label" style="background:#9b1ae8">GenBI</span>
+      </div>
+      <h2 class="slide-title">GenBI на данных Потока</h2>
+      <div class="slide-lead">Разговорная аналитика — задал вопрос, получил график и инсайт</div>
+
+```
+  <div class="flow" style="margin-bottom:20px;gap:0;align-items:center;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px">
+    <div class="flow-box">Вопрос в чате</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">LLM → SQL</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">Данные из Потока</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box">График + инсайт</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-box" style="background:var(--ink);color:white;border-color:transparent">Рекрутер / HR</div>
+  </div>
+
+  <div class="points">
+    <div class="point">
+      <div class="point-icon">💬</div>
+      <div class="point-body">
+        <div class="point-title">Примеры запросов</div>
+        <div class="point-desc">«Покажи воронку по вакансии #123» · «Сколько кандидатов отвалилось на этапе интервью за последние 30 дней?» · «Сравни time to offer у Иванова и Петрова за квартал»</div>
+      </div>
+    </div>
+    <div class="point">
+      <div class="point-icon">⚡</div>
+      <div class="point-body">
+        <div class="point-title">Почему это возможно уже сейчас</div>
+        <div class="point-desc">Модель данных строится в SQL, финальные данные уже структурированы. Локальные LLM по API доступны. Инсайты удобнее генерить на стороне сервера, не в Power BI.</div>
+        <span class="pill pill-yellow">Горизонт: 2–3 мес</span>
+      </div>
+    </div>
+  </div>
+  <div class="highlight-box">
+    <span style="font-size:22px">🤝</span>
+    <p>Синергия с вашим AI-first recruitment: <strong>GenBI закрывает аналитический слой</strong> — агенты нанимают, GenBI объясняет что происходит и почему</p>
+  </div>
+</div>
+```
+
+  </div>
+
+  <!-- ── SLIDE 5: DATA SELF-SERVICE ── -->
+
+  <div class="slide slide-content" data-index="5">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">05 / 06</span>
+        <span class="slide-tag-label" style="background:#e88b1a">Self-Service</span>
+      </div>
+      <h2 class="slide-title">Data Self-Service через OpenMetadata</h2>
+      <div class="slide-lead">Каталог данных как фундамент — разработчики и HR-команда сами генерят сервисы через Cursor</div>
+      <div class="points">
+        <div class="point fade-up fade-up-d1">
+          <div class="point-icon">📚</div>
+          <div class="point-body">
+            <div class="point-title">OpenMetadata — каталог всех данных и метрик</div>
+            <div class="point-desc">Все таблицы, поля, логика расчёта метрик описаны в одном месте. Связи между источниками видны явно. Разработчик понимает что есть и как это считается — без звонка аналитику.</div>
+            <span class="pill pill-green" style="margin-top:6px;display:inline-block">Инфраструктура есть</span>
+          </div>
+        </div>
+        <div class="point fade-up fade-up-d2">
+          <div class="point-icon">🤖</div>
+          <div class="point-body">
+            <div class="point-title">Cursor + Skill-файлы = разработчик без аналитика</div>
+            <div class="point-desc">Мы готовим skill-файлы: описания схем, правила расчёта, примеры запросов. Разработчик или HR-сотрудник подключает их в Cursor → может сам написать сервис на реальных данных, не изобретая логику с нуля.</div>
+            <span class="pill pill-blue" style="margin-top:6px;display:inline-block">Идея для совместного пилота</span>
+          </div>
+        </div>
+        <div class="point fade-up fade-up-d3">
+          <div class="point-icon">🎯</div>
+          <div class="point-body">
+            <div class="point-title">Что это даёт вам</div>
+            <div class="point-desc">Ваша команда строит AI-сервисы (tone-of-voice чекер и т.д.) — теперь у неё есть доступ к структурированным HR-данным через описанные скиллы. Быстрее, надёжнее, без разрывов логики.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SLIDE 6: ФОРМАТ ВЗАИМОДЕЙСТВИЯ ── -->
+
+  <div class="slide slide-content" data-index="6">
+    <div class="card">
+      <div class="slide-eyebrow">
+        <span class="slide-num">06 / 06</span>
+        <span class="slide-tag-label" style="background:#555">Процесс</span>
+      </div>
+      <h2 class="slide-title">Формат взаимодействия</h2>
+      <div class="slide-lead">Как синхронизироваться — без лишних встреч, с понятными приоритетами</div>
+      <div class="format-grid">
+        <div class="format-card">
+          <div class="format-badge"><span class="pill pill-green">Рекомендую</span></div>
+          <div class="format-header">
+            <div class="format-icon">📋</div>
+            <div class="format-title">Доска в Jira</div>
+          </div>
+          <div class="format-desc">Отдельный проект / доска для HR-аналитики. Эпики по доменам: Рекрутмент, Удержание, СКУД, GenBI. Задачи с приоритетами — видно что в работе, что ждёт. Предложить встречу для согласования структуры.</div>
+        </div>
+        <div class="format-card">
+          <div class="format-badge"><span class="pill pill-blue">Автоматизируем</span></div>
+          <div class="format-header">
+            <div class="format-icon">🤖</div>
+            <div class="format-title">Спринт-саммари через LLM</div>
+          </div>
+          <div class="format-desc">Раз в 2 недели LLM читает закрытые задачи из Jira и генерит краткий отчёт: что сделано, что задержалось, на что обратить внимание. Вам — 1 мин на прочтение вместо созвона.</div>
+        </div>
+        <div class="format-card">
+          <div class="format-header">
+            <div class="format-icon">📅</div>
+            <div class="format-title">Регулярная синхронизация</div>
+          </div>
+          <div class="format-desc">30 мин раз в 2 недели — только стратегия и разблокировка. Операционка — в Jira. Предлагаю: поставить первую встречу для выработки приоритетов на квартал.</div>
+        </div>
+        <div class="format-card">
+          <div class="format-header">
+            <div class="format-icon">💬</div>
+            <div class="format-title">Чат / канал</div>
+          </div>
+          <div class="format-desc">Отдельный чат для оперативных вопросов. Можно туда же присылать автоматические алерты — упала метрика, сработал сигнал риска, готов новый отчёт.</div>
+        </div>
+      </div>
+      <div class="highlight-box" style="margin-top:14px">
+        <span style="font-size:22px">🚀</span>
+        <p><strong>Следующий шаг прямо сейчас:</strong> договориться о структуре Jira-доски и первом спринте. Я предлагаю сфокусироваться на бенчмарках в HR-метриках + переносе performance score в SQL.</p>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /stage -->
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+  let prevIdx = -1;
+
+  const dotNav = document.getElementById('dotNav');
+  const counter = document.getElementById('slideCounter');
+  const btnPrev = document.getElementById('btnPrev');
+  const btnNext = document.getElementById('btnNext');
+
+  // Build dots
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot-nav' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => goTo(i));
+    dotNav.appendChild(d);
+  }
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= total || idx === current) return;
+    slides[current].classList.remove('active');
+    slides[current].classList.add('prev');
+    prevIdx = current;
+    current = idx;
+    setTimeout(() => {
+      if (prevIdx >= 0) slides[prevIdx].classList.remove('prev');
+    }, 400);
+    slides[current].classList.add('active');
+    updateChrome();
+  }
+
+  function next() { goTo(current + 1); }
+  function prev() { goTo(current - 1); }
+
+  function updateChrome() {
+    document.querySelectorAll('.dot-nav').forEach((d, i) => {
+      d.classList.toggle('active', i === current);
+    });
+    counter.textContent = `${current + 1} / ${total}`;
+    btnPrev.disabled = current === 0;
+    btnNext.disabled = current === total - 1;
+  }
+
+  // Keyboard nav
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next();
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prev();
+  });
+
+  updateChrome();
+</script>
+
+</body>
+</html>
