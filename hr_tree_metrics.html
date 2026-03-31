@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Metric Tree</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161e;
+    --surface2: #1a1e28;
+    --border: #232838;
+    --border2: #2e3447;
+    --text: #e8eaf0;
+    --text-muted: #6b7291;
+    --text-dim: #3d4460;
+
+```
+--green: #2ecc8a;
+--green-dim: rgba(46,204,138,0.12);
+--yellow: #f5c842;
+--yellow-dim: rgba(245,200,66,0.12);
+--red: #f0506e;
+--red-dim: rgba(240,80,110,0.12);
+--blue: #4e8cff;
+--blue-dim: rgba(78,140,255,0.12);
+--purple: #a78bfa;
+--purple-dim: rgba(167,139,250,0.12);
+--orange: #fb923c;
+--orange-dim: rgba(251,146,60,0.12);
+
+--domain-recruitment: #4e8cff;
+--domain-retention: #f0506e;
+--domain-workforce: #2ecc8a;
+--domain-performance: #a78bfa;
+```
+
+}
+
+- { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+font-family: ‘Manrope’, sans-serif;
+background: var(–bg);
+color: var(–text);
+min-height: 100vh;
+overflow-x: hidden;
+}
+
+/* HEADER */
+header {
+padding: 28px 32px 20px;
+border-bottom: 1px solid var(–border);
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+gap: 24px;
+flex-wrap: wrap;
+}
+
+.header-left h1 {
+font-size: 20px;
+font-weight: 700;
+letter-spacing: -0.3px;
+color: var(–text);
+}
+.header-left p {
+font-size: 12px;
+color: var(–text-muted);
+margin-top: 4px;
+font-weight: 400;
+}
+
+.filters {
+display: flex;
+gap: 8px;
+flex-wrap: wrap;
+align-items: center;
+}
+
+.filter-label {
+font-size: 11px;
+color: var(–text-muted);
+font-weight: 600;
+letter-spacing: 0.5px;
+text-transform: uppercase;
+margin-right: 4px;
+}
+
+.filter-btn {
+padding: 5px 12px;
+border-radius: 20px;
+border: 1px solid var(–border2);
+background: var(–surface);
+color: var(–text-muted);
+font-size: 11px;
+font-weight: 600;
+font-family: ‘Manrope’, sans-serif;
+cursor: pointer;
+transition: all 0.15s;
+letter-spacing: 0.3px;
+}
+.filter-btn:hover { border-color: var(–blue); color: var(–blue); }
+.filter-btn.active { background: var(–blue-dim); border-color: var(–blue); color: var(–blue); }
+
+/* LEGEND */
+.legend {
+display: flex;
+gap: 16px;
+padding: 12px 32px;
+border-bottom: 1px solid var(–border);
+flex-wrap: wrap;
+align-items: center;
+}
+.legend-label {
+font-size: 11px;
+color: var(–text-muted);
+font-weight: 600;
+letter-spacing: 0.5px;
+text-transform: uppercase;
+margin-right: 4px;
+}
+.legend-item {
+display: flex;
+align-items: center;
+gap: 6px;
+font-size: 11px;
+color: var(–text-muted);
+}
+.legend-dot {
+width: 8px; height: 8px;
+border-radius: 50%;
+flex-shrink: 0;
+}
+
+/* MAIN */
+main {
+padding: 24px 32px 60px;
+max-width: 1400px;
+}
+
+/* DOMAINS GRID */
+.domains {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+gap: 16px;
+}
+
+/* DOMAIN CARD */
+.domain {
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 12px;
+overflow: hidden;
+transition: border-color 0.2s;
+}
+
+.domain-header {
+padding: 16px 20px 14px;
+display: flex;
+align-items: center;
+gap: 12px;
+border-bottom: 1px solid var(–border);
+cursor: pointer;
+user-select: none;
+}
+.domain-header:hover { background: rgba(255,255,255,0.02); }
+
+.domain-icon {
+width: 32px; height: 32px;
+border-radius: 8px;
+display: flex; align-items: center; justify-content: center;
+font-size: 15px;
+flex-shrink: 0;
+}
+
+.domain-title { flex: 1; }
+.domain-title h2 {
+font-size: 14px;
+font-weight: 700;
+letter-spacing: -0.2px;
+}
+.domain-title p {
+font-size: 11px;
+color: var(–text-muted);
+margin-top: 2px;
+}
+
+.domain-toggle {
+color: var(–text-dim);
+font-size: 18px;
+transition: transform 0.2s;
+line-height: 1;
+}
+.domain.collapsed .domain-toggle { transform: rotate(-90deg); }
+
+.domain-body { padding: 12px 16px 16px; }
+.domain.collapsed .domain-body { display: none; }
+
+/* CATEGORY */
+.category {
+margin-bottom: 12px;
+}
+.category:last-child { margin-bottom: 0; }
+
+.category-name {
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 0.8px;
+text-transform: uppercase;
+color: var(–text-dim);
+padding: 4px 6px;
+margin-bottom: 6px;
+}
+
+/* METRIC ROW */
+.metric {
+background: var(–surface2);
+border: 1px solid var(–border);
+border-radius: 8px;
+margin-bottom: 6px;
+overflow: hidden;
+cursor: pointer;
+transition: border-color 0.15s;
+}
+.metric:hover { border-color: var(–border2); }
+.metric.expanded { border-color: var(–border2); }
+.metric.hidden-by-filter { display: none; }
+
+.metric-row {
+padding: 9px 12px;
+display: flex;
+align-items: center;
+gap: 10px;
+}
+
+.metric-status {
+width: 7px; height: 7px;
+border-radius: 50%;
+flex-shrink: 0;
+}
+.status-green { background: var(–green); box-shadow: 0 0 6px rgba(46,204,138,0.5); }
+.status-yellow { background: var(–yellow); box-shadow: 0 0 6px rgba(245,200,66,0.4); }
+.status-red { background: var(–red); box-shadow: 0 0 6px rgba(240,80,110,0.4); }
+
+.metric-name {
+flex: 1;
+font-size: 13px;
+font-weight: 500;
+color: var(–text);
+}
+
+.metric-audiences {
+display: flex;
+gap: 4px;
+flex-wrap: wrap;
+}
+
+.audience-tag {
+font-size: 10px;
+font-weight: 600;
+padding: 2px 6px;
+border-radius: 4px;
+letter-spacing: 0.3px;
+}
+.aud-rvp  { background: rgba(78,140,255,0.15); color: #7aacff; }
+.aud-hr   { background: rgba(167,139,250,0.15); color: #c4aeff; }
+.aud-rec  { background: rgba(46,204,138,0.15); color: #5dd4a0; }
+.aud-bp   { background: rgba(245,200,66,0.15); color: #f5cb5c; }
+
+.metric-expand-icon {
+color: var(–text-dim);
+font-size: 14px;
+transition: transform 0.2s;
+flex-shrink: 0;
+line-height: 1;
+font-family: ‘IBM Plex Mono’, monospace;
+}
+.metric.expanded .metric-expand-icon { transform: rotate(45deg); }
+
+/* METRIC DETAIL */
+.metric-detail {
+display: none;
+padding: 0 12px 12px;
+border-top: 1px solid var(–border);
+margin-top: 0;
+}
+.metric.expanded .metric-detail { display: block; }
+
+.detail-grid {
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 8px;
+margin-top: 10px;
+}
+
+.detail-item {}
+.detail-item.full { grid-column: 1/-1; }
+
+.detail-key {
+font-size: 10px;
+font-weight: 700;
+letter-spacing: 0.6px;
+text-transform: uppercase;
+color: var(–text-dim);
+margin-bottom: 4px;
+}
+.detail-val {
+font-size: 12px;
+color: var(–text-muted);
+line-height: 1.5;
+}
+.detail-val code {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 11px;
+background: var(–bg);
+padding: 2px 6px;
+border-radius: 4px;
+color: var(–orange);
+display: inline-block;
+margin-top: 2px;
+}
+
+.status-badge {
+display: inline-flex;
+align-items: center;
+gap: 5px;
+font-size: 11px;
+font-weight: 600;
+padding: 3px 8px;
+border-radius: 5px;
+}
+.status-badge.green { background: var(–green-dim); color: var(–green); }
+.status-badge.yellow { background: var(–yellow-dim); color: var(–yellow); }
+.status-badge.red { background: var(–red-dim); color: var(–red); }
+
+.action-chip {
+display: inline-block;
+font-size: 11px;
+padding: 3px 8px;
+background: var(–blue-dim);
+color: var(–blue);
+border-radius: 5px;
+font-weight: 500;
+margin-top: 4px;
+}
+
+/* STATS BAR */
+.stats-bar {
+display: flex;
+gap: 24px;
+padding: 14px 32px;
+border-bottom: 1px solid var(–border);
+flex-wrap: wrap;
+}
+.stat-item { text-align: center; }
+.stat-val { font-size: 22px; font-weight: 800; letter-spacing: -1px; }
+.stat-label { font-size: 10px; font-weight: 600; color: var(–text-muted); letter-spacing: 0.5px; text-transform: uppercase; margin-top: 1px; }
+
+.progress-bar {
+height: 3px;
+background: var(–border2);
+border-radius: 2px;
+margin-top: 6px;
+overflow: hidden;
+}
+.progress-fill {
+height: 100%;
+border-radius: 2px;
+transition: width 0.6s ease;
+}
+
+@media (max-width: 700px) {
+main, header, .legend, .stats-bar { padding-left: 16px; padding-right: 16px; }
+.domains { grid-template-columns: 1fr; }
+.detail-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Дерево HR-метрик</h1>
+    <p>Полная карта показателей · 4 домена · доступность данных</p>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+    <div class="filters">
+      <span class="filter-label">Аудитория</span>
+      <button class="filter-btn active" data-filter="all">Все</button>
+      <button class="filter-btn" data-filter="rvp">HRVP</button>
+      <button class="filter-btn" data-filter="hr">Рук. подразделения</button>
+      <button class="filter-btn" data-filter="rec">Head of Rec</button>
+      <button class="filter-btn" data-filter="bp">HR BP</button>
+    </div>
+  </div>
+</header>
+
+<div class="legend">
+  <span class="legend-label">Данные</span>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Есть сейчас</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div>Частично / требует доработки</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Нет / нужно строить</div>
+  <div style="width:1px;background:var(--border);margin:0 4px"></div>
+  <div class="legend-item"><span class="audience-tag aud-rvp">HRVP</span></div>
+  <div class="legend-item"><span class="audience-tag aud-hr">Рук</span></div>
+  <div class="legend-item"><span class="audience-tag aud-rec">HoR</span></div>
+  <div class="legend-item"><span class="audience-tag aud-bp">HR BP</span></div>
+</div>
+
+<div class="stats-bar" id="statsBar">
+  <div class="stat-item">
+    <div class="stat-val" id="statTotal">—</div>
+    <div class="stat-label">Метрик всего</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" style="color:var(--green)" id="statGreen">—</div>
+    <div class="stat-label">Готовы сейчас</div>
+    <div class="progress-bar"><div class="progress-fill" style="background:var(--green)" id="pgGreen"></div></div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" style="color:var(--yellow)" id="statYellow">—</div>
+    <div class="stat-label">Частично готовы</div>
+    <div class="progress-bar"><div class="progress-fill" style="background:var(--yellow)" id="pgYellow"></div></div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" style="color:var(--red)" id="statRed">—</div>
+    <div class="stat-label">Требуют работы</div>
+    <div class="progress-bar"><div class="progress-fill" style="background:var(--red)" id="pgRed"></div></div>
+  </div>
+</div>
+
+<main>
+<div class="domains" id="domainsContainer"></div>
+</main>
+
+<script>
+const METRICS = [
+  // ─── ДОМЕН: РЕКРУТМЕНТ ────────────────────────────────────────────────────
+  {
+    domain: "recruitment", category: "Скорость найма",
+    name: "Time to Offer", status: "yellow",
+    audiences: ["rec","rvp"],
+    formula: "Дата оффера − Дата открытия вакансии (рабочие дни)",
+    dataSource: "Поток (рекрутмент-система)",
+    dataStatus: "Данные есть, но качество грязное — требуется нормализация дат",
+    action: "Очистить логику дат в «Потоке», добавить в отчёт руководителей"
+  },
+  {
+    domain: "recruitment", category: "Скорость найма",
+    name: "Time to Hire", status: "yellow",
+    audiences: ["rec","rvp","hr"],
+    formula: "Дата выхода сотрудника − Дата открытия вакансии",
+    dataSource: "Поток + кадровая система",
+    dataStatus: "Требует сопоставления двух систем — Поток и кадровые данные",
+    action: "Связать вакансию с фактом найма через ID сотрудника"
+  },
+  {
+    domain: "recruitment", category: "Скорость найма",
+    name: "Time to Fill (план vs факт)", status: "red",
+    audiences: ["rec","rvp"],
+    formula: "Плановый срок (из заявки) vs фактический Time to Hire",
+    dataSource: "Заявка на найм — нет в структурированном виде",
+    dataStatus: "Плановые сроки нигде не фиксируются структурированно",
+    action: "Добавить поле «плановый срок» в заявку на найм в Потоке"
+  },
+  {
+    domain: "recruitment", category: "Воронка и конверсия",
+    name: "Конверсия по этапам воронки", status: "yellow",
+    audiences: ["rec","rvp"],
+    formula: "Кандидатов на этап N+1 / Кандидатов на этап N × 100%",
+    dataSource: "Поток — этапы воронки",
+    dataStatus: "Данные есть, требуется нормализация статусов этапов",
+    action: "Стандартизировать статусы в Потоке, построить воронку на дашборде"
+  },
+  {
+    domain: "recruitment", category: "Воронка и конверсия",
+    name: "Offer Acceptance Rate", status: "yellow",
+    audiences: ["rec","rvp"],
+    formula: "Принятые офферы / Выставленные офферы × 100%",
+    dataSource: "Поток — статус оффера",
+    dataStatus: "Статус оффера фиксируется, но не всегда корректно",
+    action: "Регламентировать фиксацию отказов от оффера в Потоке"
+  },
+  {
+    domain: "recruitment", category: "Воронка и конверсия",
+    name: "Источник найма (Source of Hire)", status: "yellow",
+    audiences: ["rec","rvp"],
+    formula: "Доля нанятых по каждому источнику (%)",
+    dataSource: "Поток — канал привлечения",
+    dataStatus: "Поле заполняется нерегулярно — нужна дисциплина данных",
+    action: "Сделать поле «источник» обязательным, мониторить в дашборде качества"
+  },
+  {
+    domain: "recruitment", category: "Качество найма",
+    name: "Доля прошедших испытательный срок", status: "yellow",
+    audiences: ["rec","rvp","hr"],
+    formula: "Сотрудники, прошедшие ИС / Нанятых за период × 100%",
+    dataSource: "Кадровая система — дата окончания ИС / факт увольнения в ИС",
+    dataStatus: "Данные о факте прохождения ИС есть частично",
+    action: "Связать с кадровой системой, добавить разбивку по рекрутеру и источнику"
+  },
+  {
+    domain: "recruitment", category: "Качество найма",
+    name: "Ранняя текучесть (до 3 мес)", status: "yellow",
+    audiences: ["rec","rvp","hr"],
+    formula: "Уволившиеся до 3 мес стажа / Нанятых за период × 100%",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть — нужно рассчитать в SQL",
+    action: "Добавить в отчёт руководителей как сигнал качества найма"
+  },
+  {
+    domain: "recruitment", category: "Нагрузка рекрутеров",
+    name: "Вакансий на рекрутера (активных)", status: "green",
+    audiences: ["rec"],
+    formula: "Активные вакансии в работе / Кол-во рекрутеров",
+    dataSource: "Поток",
+    dataStatus: "Данные есть",
+    action: "Вынести в мониторинг-дашборд рекрутмента"
+  },
+  {
+    domain: "recruitment", category: "Нагрузка рекрутеров",
+    name: "Качество данных рекрутера (Поток)", status: "green",
+    audiences: ["rec"],
+    formula: "% заполненных обязательных полей по вакансиям рекрутера",
+    dataSource: "Поток — существующий дашборд качества данных",
+    dataStatus: "Дашборд уже построен — можно использовать",
+    action: "Разбить по рекрутерам, добавить динамику по неделям"
+  },
+  {
+    domain: "recruitment", category: "Стоимость найма",
+    name: "Cost per Hire", status: "red",
+    audiences: ["rvp"],
+    formula: "Затраты на найм за период / Кол-во нанятых",
+    dataSource: "Финансовые данные — нет интеграции",
+    dataStatus: "Финансовые данные по найму не собираются структурированно",
+    action: "Долгосрочно: интеграция с бюджетом на подбор"
+  },
+
+  // ─── ДОМЕН: УДЕРЖАНИЕ / ОТТОК ─────────────────────────────────────────────
+  {
+    domain: "retention", category: "Текучесть",
+    name: "Общая текучесть (%)", status: "green",
+    audiences: ["rvp","hr","bp"],
+    formula: "Уволившиеся за период / Среднесписочная численность × 100%",
+    dataSource: "Кадровая система",
+    dataStatus: "Считается — единственная зрелая метрика в HR-отчёте",
+    action: "Добавить бенчмарк (среднее по компании) рядом с цифрой подразделения"
+  },
+  {
+    domain: "retention", category: "Текучесть",
+    name: "Добровольная vs вынужденная текучесть", status: "yellow",
+    audiences: ["rvp","hr","bp"],
+    formula: "Раздельный расчёт по причине увольнения (собств. желание / сокращение / ИС)",
+    dataSource: "Кадровая система — статья увольнения",
+    dataStatus: "Статья увольнения есть, нужна типизация причин",
+    action: "Сгруппировать статьи в 3 типа: добровольно / вынужденно / ИС"
+  },
+  {
+    domain: "retention", category: "Текучесть",
+    name: "Текучесть по стажу (<1 года / 1–3 / 3+)", status: "yellow",
+    audiences: ["rvp","hr","bp"],
+    formula: "Текучесть в каждой когорте стажа",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть, группировка не реализована",
+    action: "Добавить cohort breakdown в отчёт — критичный сигнал для онбординга"
+  },
+  {
+    domain: "retention", category: "Текучесть",
+    name: "Текучесть в испытательный срок", status: "yellow",
+    audiences: ["rvp","hr","rec","bp"],
+    formula: "Уволившиеся в ИС / Нанятых за период × 100%",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть, отдельно не вычисляется",
+    action: "Связать с рекрутером и источником найма для root-cause анализа"
+  },
+  {
+    domain: "retention", category: "Стабильность",
+    name: "Retention Rate", status: "green",
+    audiences: ["rvp","hr","bp"],
+    formula: "(Сотрудников на конец периода / Сотрудников на начало) × 100%",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть, метрика не отображается явно",
+    action: "Добавить рядом с текучестью как позитивный фрейм"
+  },
+  {
+    domain: "retention", category: "Стабильность",
+    name: "Средний стаж в подразделении", status: "green",
+    audiences: ["hr","bp"],
+    formula: "Среднее (текущая дата − дата найма) по сотрудникам подразделения",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть",
+    action: "Добавить в HR-метрики руководителей как контекст к текучести"
+  },
+  {
+    domain: "retention", category: "Ранние сигналы риска (rule-based)",
+    name: "Стаж 12–18 мес без изменений", status: "yellow",
+    audiences: ["hr","bp"],
+    formula: "Сотрудники со стажем 12–18 мес И без повышения/перевода за это время",
+    dataSource: "Кадровая система — история движений",
+    dataStatus: "Данные о движениях есть частично, нужна логика правила",
+    action: "Реализовать как SQL-правило → флаг в HR-отчёт для руководителя"
+  },
+  {
+    domain: "retention", category: "Ранние сигналы риска (rule-based)",
+    name: "Несколько увольнений подряд в подразделении", status: "yellow",
+    audiences: ["hr","bp","rvp"],
+    formula: "3+ увольнений за 60 дней в одном подразделении",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть, логика правила не реализована",
+    action: "Триггерный алерт в отчёте с LLM-комментарием"
+  },
+  {
+    domain: "retention", category: "Ранние сигналы риска (rule-based)",
+    name: "Падение performance 2 периода подряд", status: "red",
+    audiences: ["hr","bp"],
+    formula: "Score(t) < Score(t-1) < Score(t-2) для одного сотрудника",
+    dataSource: "Performance score — сейчас в Excel",
+    dataStatus: "Данные в Excel, не интегрированы в SQL",
+    action: "Первый шаг: перенести Excel-данные в SQL-таблицу"
+  },
+
+  // ─── ДОМЕН: СОСТАВ И СТРУКТУРА ────────────────────────────────────────────
+  {
+    domain: "workforce", category: "Численность",
+    name: "Списочная численность", status: "green",
+    audiences: ["rvp","hr","bp"],
+    formula: "Кол-во активных сотрудников на дату",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть — отображается в HR-отчёте",
+    action: "Добавить тренд (динамику по месяцам) рядом с текущим числом"
+  },
+  {
+    domain: "workforce", category: "Численность",
+    name: "Укомплектованность штата (%)", status: "yellow",
+    audiences: ["rvp","hr","bp"],
+    formula: "Фактическая численность / Штатная численность × 100%",
+    dataSource: "Кадровая система + штатное расписание",
+    dataStatus: "Штатное расписание есть, интеграция с фактом не настроена",
+    action: "Связать штатное расписание с кадровой системой в SQL"
+  },
+  {
+    domain: "workforce", category: "Численность",
+    name: "Открытые вакансии (потребность в найме)", status: "green",
+    audiences: ["rvp","hr","rec"],
+    formula: "Штат − Факт = потребность",
+    dataSource: "Поток (открытые вакансии)",
+    dataStatus: "Данные есть",
+    action: "Отображать в разрезе подразделений и срочности"
+  },
+  {
+    domain: "workforce", category: "Структура персонала",
+    name: "Распределение по стажу (когорты)", status: "green",
+    audiences: ["rvp","hr","bp"],
+    formula: "Доля сотрудников в группах: <1 / 1–3 / 3–5 / 5+ лет",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть, группировка не реализована",
+    action: "Добавить в HR-метрики — показывает зрелость команды"
+  },
+  {
+    domain: "workforce", category: "Структура персонала",
+    name: "Распределение по грейдам / уровням", status: "yellow",
+    audiences: ["rvp","hr","bp"],
+    formula: "Доля сотрудников по грейдам внутри подразделения",
+    dataSource: "Кадровая система — грейд/уровень",
+    dataStatus: "Поле есть, заполненность нестабильная",
+    action: "Провести аудит заполненности, добавить в HR-метрики"
+  },
+  {
+    domain: "workforce", category: "Фонд оплаты труда",
+    name: "Средняя зарплата (медиана) по подразделению", status: "green",
+    audiences: ["hr","bp"],
+    formula: "Медиана gross-зарплаты по сотрудникам подразделения",
+    dataSource: "Кадровая система — зарплатные данные",
+    dataStatus: "Данные есть — отображается в HR-отчёте",
+    action: "Добавить сравнение с медианой по компании / аналогичным подразделениям"
+  },
+  {
+    domain: "workforce", category: "Фонд оплаты труда",
+    name: "ФОТ подразделения", status: "green",
+    audiences: ["hr","rvp"],
+    formula: "Сумма gross-зарплат сотрудников подразделения",
+    dataSource: "Кадровая система",
+    dataStatus: "Данные есть",
+    action: "Добавить тренд и % от планового ФОТ"
+  },
+
+  // ─── ДОМЕН: PERFORMANCE ───────────────────────────────────────────────────
+  {
+    domain: "performance", category: "Оценка результатов",
+    name: "Performance Score (текущий)", status: "yellow",
+    audiences: ["hr","bp"],
+    formula: "Итоговая оценка сотрудника за период (нормализованная шкала)",
+    dataSource: "Excel — оценки руководителей",
+    dataStatus: "Данные ведутся в Excel, не в SQL — разрозненные файлы",
+    action: "Приоритет №1: создать SQL-таблицу, перенести исторические данные"
+  },
+  {
+    domain: "performance", category: "Оценка результатов",
+    name: "Динамика оценок (тренд по сотруднику)", status: "red",
+    audiences: ["hr","bp"],
+    formula: "Score(t) vs Score(t-1), Score(t-2) — 3 периода",
+    dataSource: "Excel (история)",
+    dataStatus: "Исторические данные есть в Excel, но не систематизированы",
+    action: "После переноса в SQL — реализовать тренд как правило риска"
+  },
+  {
+    domain: "performance", category: "Связь с другими доменами",
+    name: "Корреляция performance и текучести", status: "red",
+    audiences: ["rvp","bp"],
+    formula: "Средний score уволившихся vs оставшихся (по когортам)",
+    dataSource: "Performance (Excel) + кадровая система",
+    dataStatus: "Нет единого датасета — требует интеграции двух источников",
+    action: "Реализовать после переноса score в SQL — высокая ценность для HRVP"
+  },
+  {
+    domain: "performance", category: "Связь с другими доменами",
+    name: "Оценка качества найма через performance", status: "red",
+    audiences: ["rec","rvp"],
+    formula: "Средний score сотрудников в первые 12 мес по источнику найма",
+    dataSource: "Performance + Поток (источник)",
+    dataStatus: "Нет интеграции — долгосрочная цель",
+    action: "Стратегическая метрика: замыкает цикл найма на качество"
+  },
+  {
+    domain: "performance", category: "Награды и признание",
+    name: "Частота получения наград", status: "yellow",
+    audiences: ["hr","bp"],
+    formula: "Кол-во наград за период / Численность подразделения",
+    dataSource: "Система наград — данные есть",
+    dataStatus: "Данные есть, аналитически не используются",
+    action: "Добавить как прокси-метрику вовлечённости в HR-отчёт"
+  },
+];
+
+const DOMAINS_META = {
+  recruitment: { label: "Рекрутмент", desc: "Найм и привлечение", icon: "🎯", color: "var(--domain-recruitment)" },
+  retention:   { label: "Удержание / Отток", desc: "Текучесть и стабильность персонала", icon: "🔄", color: "var(--domain-retention)" },
+  workforce:   { label: "Состав и структура", desc: "Численность, структура, ФОТ", icon: "👥", color: "var(--domain-workforce)" },
+  performance: { label: "Performance", desc: "Оценки, результативность", icon: "⚡", color: "var(--domain-performance)" },
+};
+
+const AUD_LABELS = { rvp: "HRVP", hr: "Рук", rec: "HoR", bp: "HR BP" };
+const AUD_CLASS  = { rvp: "aud-rvp", hr: "aud-hr", rec: "aud-rec", bp: "aud-bp" };
+const STATUS_TEXTS = { green: "Есть сейчас", yellow: "Частично готово", red: "Нужно строить" };
+
+let activeFilter = "all";
+
+function buildUI() {
+  const container = document.getElementById("domainsContainer");
+  container.innerHTML = "";
+
+  const grouped = {};
+  METRICS.forEach(m => {
+    if (!grouped[m.domain]) grouped[m.domain] = {};
+    if (!grouped[m.domain][m.category]) grouped[m.domain][m.category] = [];
+    grouped[m.domain][m.category].push(m);
+  });
+
+  Object.entries(DOMAINS_META).forEach(([domainKey, domainMeta]) => {
+    const domainEl = document.createElement("div");
+    domainEl.className = "domain";
+    domainEl.dataset.domain = domainKey;
+
+    const cats = grouped[domainKey] || {};
+    const allMetrics = Object.values(cats).flat();
+    const counts = {
+      green: allMetrics.filter(m=>m.status==="green").length,
+      yellow: allMetrics.filter(m=>m.status==="yellow").length,
+      red: allMetrics.filter(m=>m.status==="red").length,
+    };
+
+    domainEl.innerHTML = `
+      <div class="domain-header" onclick="toggleDomain(this)">
+        <div class="domain-icon" style="background:${domainMeta.color}22; color:${domainMeta.color}">${domainMeta.icon}</div>
+        <div class="domain-title">
+          <h2 style="color:${domainMeta.color}">${domainMeta.label}</h2>
+          <p>${domainMeta.desc} · ${allMetrics.length} метрик · <span style="color:var(--green)">${counts.green}✓</span> <span style="color:var(--yellow)">${counts.yellow}~</span> <span style="color:var(--red)">${counts.red}✗</span></p>
+        </div>
+        <div class="domain-toggle">▾</div>
+      </div>
+      <div class="domain-body" id="body-${domainKey}"></div>
+    `;
+
+    const body = domainEl.querySelector(`#body-${domainKey}`);
+
+    Object.entries(cats).forEach(([catName, metrics]) => {
+      const catEl = document.createElement("div");
+      catEl.className = "category";
+
+      const metricsHTML = metrics.map((m, i) => {
+        const uid = `${domainKey}-${catName}-${i}`.replace(/\s+/g,"_");
+        const audTags = m.audiences.map(a =>
+          `<span class="audience-tag ${AUD_CLASS[a]}">${AUD_LABELS[a]}</span>`
+        ).join("");
+
+        return `
+          <div class="metric" data-audiences="${m.audiences.join(",")}" data-uid="${uid}">
+            <div class="metric-row" onclick="toggleMetric('${uid}')">
+              <div class="metric-status status-${m.status}"></div>
+              <div class="metric-name">${m.name}</div>
+              <div class="metric-audiences">${audTags}</div>
+              <div class="metric-expand-icon">+</div>
+            </div>
+            <div class="metric-detail" id="detail-${uid}">
+              <div class="detail-grid">
+                <div class="detail-item">
+                  <div class="detail-key">Доступность данных</div>
+                  <div class="detail-val">
+                    <span class="status-badge ${m.status}">${STATUS_TEXTS[m.status]}</span>
+                  </div>
+                </div>
+                <div class="detail-item">
+                  <div class="detail-key">Источник</div>
+                  <div class="detail-val">${m.dataSource}</div>
+                </div>
+                <div class="detail-item full">
+                  <div class="detail-key">Формула / логика</div>
+                  <div class="detail-val"><code>${m.formula}</code></div>
+                </div>
+                <div class="detail-item full">
+                  <div class="detail-key">Статус данных</div>
+                  <div class="detail-val">${m.dataStatus}</div>
+                </div>
+                <div class="detail-item full">
+                  <div class="detail-key">Следующий шаг</div>
+                  <div class="detail-val"><span class="action-chip">→ ${m.action}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      }).join("");
+
+      catEl.innerHTML = `<div class="category-name">${catName}</div>${metricsHTML}`;
+      body.appendChild(catEl);
+    });
+
+    container.appendChild(domainEl);
+  });
+
+  updateStats();
+}
+
+function toggleDomain(headerEl) {
+  const domain = headerEl.closest(".domain");
+  domain.classList.toggle("collapsed");
+}
+
+function toggleMetric(uid) {
+  const el = document.querySelector(`[data-uid="${uid}"]`);
+  el.classList.toggle("expanded");
+}
+
+function applyFilter(filter) {
+  activeFilter = filter;
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.filter === filter);
+  });
+  document.querySelectorAll(".metric").forEach(m => {
+    if (filter === "all") {
+      m.classList.remove("hidden-by-filter");
+    } else {
+      const auds = m.dataset.audiences.split(",");
+      m.classList.toggle("hidden-by-filter", !auds.includes(filter));
+    }
+  });
+  updateStats();
+}
+
+function updateStats() {
+  const visible = [...document.querySelectorAll(".metric:not(.hidden-by-filter)")];
+  const total = visible.length;
+  const g = visible.filter(m => m.querySelector(".metric-status").classList.contains("status-green")).length;
+  const y = visible.filter(m => m.querySelector(".metric-status").classList.contains("status-yellow")).length;
+  const r = visible.filter(m => m.querySelector(".metric-status").classList.contains("status-red")).length;
+
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statGreen").textContent = g;
+  document.getElementById("statYellow").textContent = y;
+  document.getElementById("statRed").textContent = r;
+
+  const pct = n => total ? Math.round(n/total*100) + "%" : "0%";
+  document.getElementById("pgGreen").style.width = pct(g);
+  document.getElementById("pgYellow").style.width = pct(y);
+  document.getElementById("pgRed").style.width = pct(r);
+}
+
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => applyFilter(btn.dataset.filter));
+});
+
+buildUI();
+</script>
+
+</body>
+</html>
