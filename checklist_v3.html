@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Выпуск отчета в прод — Power BI</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0e14; --card: #12161f; --card2: #181d28; --border: #1f2533; --border-hi: #2d5dd4;
+  --txt: #cdd3e0; --txt2: #f0f2f7; --muted: #5c6478; --dim: #3a4155;
+  --accent: #3b7cf5; --accent2: #5b9bff; --accent-soft: rgba(59,124,245,.10); --accent-glow: rgba(59,124,245,.25);
+  --green: #2ec47a; --green-soft: rgba(46,196,122,.08); --green-glow: rgba(46,196,122,.20);
+  --orange: #e09422; --orange-soft: rgba(224,148,34,.10);
+  --red: #d94452; --red-soft: rgba(217,68,82,.10);
+  --purple: #8b6cf0; --purple-soft: rgba(139,108,240,.10);
+  --cyan: #22b8cf; --cyan-soft: rgba(34,184,207,.10);
+  --font: 'Manrope', system-ui, sans-serif; --mono: 'JetBrains Mono', monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--txt);min-height:100vh;-webkit-font-smoothing:antialiased}
+input,textarea,button,select{font-family:var(--font)}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--dim);border-radius:3px}
+.hidden{display:none!important}
+
+/* ══ FORM SCREEN ══ */
+.form-wrap{max-width:600px;margin:0 auto;padding:36px 16px}
+.fh{text-align:center;margin-bottom:28px}
+.fh .fh-ico{width:48px;height:48px;background:var(--accent-soft);border:1px solid rgba(59,124,245,.3);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.fh .fh-ico svg{width:24px;height:24px;color:var(--accent2)}
+.fh h1{font-size:21px;font-weight:800;letter-spacing:-.03em;color:var(--txt2)}
+.fh p{color:var(--muted);font-size:12.5px;margin-top:5px;line-height:1.5}
+
+.field{margin-bottom:12px}
+.field label{font-size:11.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}
+.field label .req{color:var(--red)}
+.inp{width:100%;background:var(--card);border:1px solid var(--border);border-radius:7px;color:var(--txt);padding:9px 11px;font-size:13.5px;outline:none;transition:border-color .2s}
+.inp:focus{border-color:var(--accent)}
+textarea.inp{resize:vertical;min-height:64px}
+.form-row{display:flex;gap:10px;flex-wrap:wrap}
+.form-row .field{flex:1;min-width:200px}
+.inp-hint{font-size:11px;color:var(--muted);margin-top:3px}
+
+/* chips / tags input */
+.chips-wrap{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:6px 8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;cursor:text;min-height:40px;transition:border-color .2s}
+.chips-wrap:focus-within{border-color:var(--accent)}
+.chip{background:var(--accent-soft);border:1px solid rgba(59,124,245,.28);color:var(--accent2);border-radius:5px;padding:2px 8px 2px 8px;font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:4px}
+.chip-x{cursor:pointer;color:var(--muted);font-size:13px;line-height:1;border:none;background:none;padding:0;display:flex;align-items:center}
+.chip-x:hover{color:var(--red)}
+.chip-input{background:none;border:none;outline:none;color:var(--txt);font-size:13px;min-width:80px;flex:1}
+.chip-presets{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.chip-preset{background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;transition:all .15s}
+.chip-preset:hover{border-color:var(--accent);color:var(--txt2)}
+.chip-preset.sel{background:var(--accent-soft);border-color:rgba(59,124,245,.4);color:var(--accent2)}
+
+/* toggles */
+.cond-section{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin:16px 0}
+.cond-section h3{font-size:11px;font-weight:700;color:var(--txt2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em}
+.cond-q{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.cond-q+.cond-q{border-top:1px solid var(--border)}
+.cond-q span{font-size:13px}
+.toggle{position:relative;width:38px;height:20px;cursor:pointer;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;inset:0;background:var(--dim);border-radius:10px;transition:.2s}
+.toggle .slider::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.slider{background:var(--accent)}
+.toggle input:checked+.slider::before{transform:translateX(18px)}
+
+.form-actions{display:flex;gap:10px;justify-content:center;margin-top:22px}
+.btn-p{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:11px 34px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:-.01em;transition:opacity .15s}
+.btn-p:hover{opacity:.85}
+.btn-s{background:var(--card);color:var(--muted);border:1px solid var(--border);border-radius:7px;padding:11px 16px;font-size:12.5px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s}
+.btn-s:hover{border-color:var(--accent);color:var(--txt)}
+.btn-s svg{width:14px;height:14px}
+
+/* ══ STEP SCREEN ══ */
+.step-wrap{max-width:640px;margin:0 auto;padding:20px 16px 80px}
+
+/* topbar */
+.step-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.step-topbar .back-btn{display:flex;align-items:center;gap:5px;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11.5px;cursor:pointer;transition:all .15s}
+.step-topbar .back-btn:hover{border-color:var(--accent);color:var(--txt)}
+.step-topbar .back-btn svg{width:13px;height:13px}
+.step-topbar .top-actions{display:flex;gap:6px}
+.top-act-btn{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .15s}
+.top-act-btn:hover{border-color:var(--accent);color:var(--txt)}
+.top-act-btn svg{width:13px;height:13px}
+.top-act-btn.dng:hover{border-color:var(--red);color:var(--red)}
+
+/* overall progress mini */
+.mini-prog{background:var(--card);border:1px solid var(--border);border-radius:7px;padding:9px 13px;margin-bottom:16px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s}
+.mini-prog:hover{border-color:var(--dim)}
+.mini-prog .mp-bar{flex:1;height:4px;background:var(--bg);border-radius:2px;overflow:hidden}
+.mini-prog .mp-fill{height:100%;border-radius:2px;transition:width .4s}
+.mini-prog .mp-txt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap}
+.mini-prog .mp-eye{display:flex;align-items:center;color:var(--muted)}
+.mini-prog .mp-eye svg{width:13px;height:13px}
+
+/* step card */
+.step-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px}
+
+/* step header */
+.step-header{padding:16px 18px 14px;border-bottom:1px solid var(--border)}
+.step-num{font-size:10.5px;font-weight:700;color:var(--muted);font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.step-num .grp-badge{background:var(--card2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:9.5px;color:var(--dim)}
+.step-title{font-size:17px;font-weight:800;color:var(--txt2);line-height:1.3;letter-spacing:-.02em}
+.step-lock{display:flex;align-items:center;gap:5px;margin-top:8px;font-size:11.5px;color:var(--orange);font-weight:600}
+.step-lock svg{width:13px;height:13px}
+
+/* step body */
+.step-body{padding:16px 18px}
+
+/* tip */
+.tip-box{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+.tip-label{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.tip-label svg{width:12px;height:12px;color:var(--cyan)}
+.tip-text{font-size:12.5px;line-height:1.6;color:var(--txt)}
+.tip-warn{display:flex;align-items:flex-start;gap:5px;margin-top:8px;font-size:11.5px;color:var(--orange);font-weight:600}
+.tip-warn svg{width:13px;height:13px;flex-shrink:0;margin-top:1px}
+
+/* action area */
+.step-action{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px}
+.action-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+
+/* copy prompt block */
+.prompt-block{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.7;color:var(--txt);white-space:pre-wrap;font-family:var(--mono);max-height:220px;overflow-y:auto;margin-bottom:8px}
+.prompt-steps{font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px}
+.prompt-steps ol{padding-left:16px}
+.prompt-steps li{margin-bottom:2px}
+.copy-btn{background:var(--accent-soft);border:1px solid rgba(59,124,245,.35);color:var(--accent2);border-radius:5px;padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .18s;display:flex;align-items:center;gap:6px}
+.copy-btn:hover{border-color:var(--accent);background:var(--accent-glow)}
+.copy-btn svg{width:13px;height:13px}
+.copy-btn.copied{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+
+/* link action */
+.link-btn{background:var(--accent-soft);border:1px solid rgba(59,124,245,.35);color:var(--accent2);border-radius:5px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.link-btn:hover{border-color:var(--accent);background:var(--accent-glow);text-decoration:none}
+.link-btn svg{width:13px;height:13px}
+.link-miss{font-size:11.5px;color:var(--muted);font-style:italic}
+
+/* copy-value */
+.copy-val-block{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.copy-val{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 10px;font-size:12.5px;color:var(--txt);font-family:var(--mono);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* comment */
+.step-comment{width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--txt);padding:8px 10px;font-size:12.5px;outline:none;resize:none;transition:border-color .2s;min-height:42px}
+.step-comment:focus{border-color:var(--accent)}
+
+/* check / done button */
+.check-area{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.check-btn{display:flex;align-items:center;gap:8px;padding:11px 20px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;border:2px solid var(--dim);background:transparent;color:var(--muted);transition:all .2s;flex:1;max-width:260px;justify-content:center}
+.check-btn.done{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+.check-btn:not(.done):hover{border-color:var(--accent);color:var(--txt2)}
+.check-btn svg{width:16px;height:16px}
+
+/* nav buttons */
+.step-nav{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:14px}
+.nav-btn{display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;transition:all .18s;border:none}
+.nav-prev{background:var(--card);color:var(--muted);border:1px solid var(--border)}
+.nav-prev:hover{border-color:var(--dim);color:var(--txt)}
+.nav-next{background:var(--accent);color:#fff;flex:1;justify-content:center}
+.nav-next:hover{opacity:.88}
+.nav-next:disabled{background:var(--dim);cursor:not-allowed;opacity:.6}
+.nav-btn svg{width:14px;height:14px}
+
+/* step dots */
+.step-dots{display:flex;gap:3px;align-items:center;flex:1;justify-content:center;flex-wrap:wrap}
+.step-dot{width:7px;height:7px;border-radius:50%;background:var(--dim);border:none;cursor:pointer;padding:0;transition:all .15s;flex-shrink:0}
+.step-dot.active{background:var(--accent);transform:scale(1.3)}
+.step-dot.done-dot{background:var(--green)}
+
+/* ══ OVERVIEW SCREEN ══ */
+.ov-wrap{max-width:640px;margin:0 auto;padding:20px 16px 80px}
+.ov-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.ov-title{font-size:18px;font-weight:800;color:var(--txt2);letter-spacing:-.02em}
+.ov-prog{background:var(--card);border:1px solid var(--border);border-radius:9px;padding:14px 16px;margin-bottom:16px}
+.ov-prog-top{display:flex;justify-content:space-between;margin-bottom:8px}
+.ov-prog-top .op-l{font-size:13px;font-weight:700;color:var(--txt2)}
+.ov-prog-top .op-r{font-size:13px;font-weight:700}
+.ov-prog-bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden}
+.ov-prog-fill{height:100%;border-radius:3px;transition:width .4s}
+.ov-done-msg{text-align:center;margin-top:10px;font-size:13px;color:var(--green);font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px}
+.ov-done-msg svg{width:15px;height:15px}
+
+/* group in overview */
+.ov-grp{background:var(--card);border:1px solid var(--border);border-radius:9px;margin-bottom:8px;overflow:hidden}
+.ov-grp.ad{border-color:rgba(46,196,122,.22)}
+.ov-gh{display:flex;align-items:center;justify-content:space-between;padding:10px 13px;cursor:pointer;user-select:none;transition:background .12s}
+.ov-gh:hover{background:rgba(255,255,255,.015)}
+.ov-gh-l{display:flex;align-items:center;gap:8px}
+.ov-gh-icon{width:18px;height:18px;flex-shrink:0;color:var(--muted)}
+.ov-gt{font-size:13px;font-weight:700;color:var(--txt2)}
+.ov-gh-r{display:flex;align-items:center;gap:7px}
+.bdg{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:8px}
+.bdg-n{background:var(--accent-soft);color:var(--accent2)}.bdg-d{background:var(--green-soft);color:var(--green)}
+.chv{font-size:10px;color:var(--muted);transition:transform .2s}.chv.cl{transform:rotate(-90deg)}
+
+/* items in overview */
+.ov-item{display:flex;align-items:flex-start;gap:9px;padding:8px 13px;cursor:pointer;transition:background .1s}
+.ov-item:hover{background:rgba(255,255,255,.012)}
+.ov-item+.ov-item{border-top:1px solid rgba(31,37,51,.4)}
+.ov-ckb{width:17px;height:17px;min-width:17px;border-radius:4px;margin-top:2px;border:2px solid var(--dim);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.ov-ckb.on{border-color:var(--green);background:var(--green)}
+.ov-ckb svg{width:10px;height:10px;color:#fff}
+.ov-item-body{flex:1;min-width:0}
+.ov-item-txt{font-size:12.5px;color:var(--txt);line-height:1.4}
+.ov-item.dn .ov-item-txt{color:var(--muted);text-decoration:line-through}
+.ov-item-num{font-size:10px;color:var(--dim);font-family:var(--mono);margin-right:4px}
+.ov-item-cmt{font-size:10.5px;color:var(--muted);margin-top:2px;font-style:italic}
+.ov-item-lock{font-size:10px;color:var(--orange);margin-top:2px;display:flex;align-items:center;gap:3px}
+.ov-item-lock svg{width:11px;height:11px}
+
+/* ══ TOAST ══ */
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border);color:var(--txt2);padding:9px 20px;border-radius:7px;font-size:12.5px;font-weight:600;z-index:999;box-shadow:0 8px 28px rgba(0,0,0,.55);animation:tin .22s ease-out;pointer-events:none}
+@keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(6px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- ═══ FORM SCREEN ═══ -->
+<div id="formScreen" class="form-wrap">
+  <div class="fh">
+    <div class="fh-ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    </div>
+    <h1>Выпуск отчета в прод</h1>
+    <p>Заполните информацию — она подставится в шаги чеклиста<br>и кнопки копирования</p>
+  </div>
+
+  <div class="field">
+    <label>Название отчета <span class="req">*</span></label>
+    <input id="f_reportName" class="inp" placeholder="Продажи по регионам Q4 2025">
+  </div>
+  <div class="field">
+    <label>Описание отчета <span class="req">*</span></label>
+    <textarea id="f_description" class="inp" placeholder="Что показывает, для кого, какие данные, периодичность"></textarea>
+  </div>
+  <div class="form-row">
+    <div class="field">
+      <label>Владелец отчета</label>
+      <input id="f_owner" class="inp" placeholder="ФИО или username">
+    </div>
+    <div class="field">
+      <label>Ответственный аналитик</label>
+      <input id="f_analyst" class="inp" placeholder="ФИО или username">
+    </div>
+  </div>
+  <div class="field">
+    <label>Ссылка на эпик Jira</label>
+    <input id="f_jiraEpic" class="inp" placeholder="https://jira.domen.ru/browse/PROJ-123">
+  </div>
+  <div class="form-row">
+    <div class="field">
+      <label>Ссылка на Power BI</label>
+      <input id="f_pbiLink" class="inp" placeholder="https://rs.domen.ru/reports/...">
+    </div>
+    <div class="field">
+      <label>Ссылка на SharePoint</label>
+      <input id="f_sharepointLink" class="inp" placeholder="https://sharepoint.domen.ru/sites/...">
+    </div>
+  </div>
+
+  <!-- Systems multi-chip -->
+  <div class="field">
+    <label>Системы-источники данных</label>
+    <div class="chips-wrap" id="systems-chips" onclick="document.getElementById('systems-inp').focus()">
+      <input id="systems-inp" class="chip-input" placeholder="Введите и нажмите Enter...">
+    </div>
+    <div class="chip-presets" id="systems-presets"></div>
+    <div class="inp-hint">Нажмите на готовые или введите своё</div>
+  </div>
+
+  <!-- Business unit chip -->
+  <div class="field">
+    <label>Направление бизнеса</label>
+    <div class="chips-wrap" id="bizunit-chips" onclick="document.getElementById('bizunit-inp').focus()">
+      <input id="bizunit-inp" class="chip-input" placeholder="Введите и нажмите Enter...">
+    </div>
+    <div class="chip-presets" id="bizunit-presets"></div>
+    <div class="inp-hint">Может быть несколько направлений</div>
+  </div>
+
+  <div class="cond-section">
+    <h3>Условные пункты</h3>
+    <div class="cond-q"><span>Нужен каталог аналитики?</span><label class="toggle"><input type="checkbox" id="f_needCatalog"><span class="slider"></span></label></div>
+    <div class="cond-q"><span>Есть ролевая модель?</span><label class="toggle"><input type="checkbox" id="f_hasRoleModel"><span class="slider"></span></label></div>
+    <div class="cond-q"><span>Нужны доступы по умолчанию?</span><label class="toggle"><input type="checkbox" id="f_needDefAccess"><span class="slider"></span></label></div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn-p" onclick="startChecklist()">Начать чеклист →</button>
+    <label class="btn-s">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Загрузить
+      <input type="file" accept=".json" onchange="loadFile(event)" style="display:none">
+    </label>
+  </div>
+</div>
+
+<!-- ═══ STEP SCREEN ═══ -->
+<div id="stepScreen" class="step-wrap hidden">
+  <div class="step-topbar">
+    <button class="back-btn" onclick="goBack()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Данные
+    </button>
+    <div class="top-actions">
+      <button class="top-act-btn" onclick="showOverview()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Прогресс
+      </button>
+      <button class="top-act-btn" onclick="saveFile()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Сохранить
+      </button>
+      <button class="top-act-btn dng" onclick="resetAll()" title="Сбросить прогресс">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        Сброс
+      </button>
+    </div>
+  </div>
+
+  <!-- mini progress bar (click to open overview) -->
+  <div class="mini-prog" onclick="showOverview()">
+    <div class="mp-bar"><div class="mp-fill" id="mp-fill"></div></div>
+    <span class="mp-txt" id="mp-txt">0/0</span>
+    <span class="mp-eye">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+    </span>
+  </div>
+
+  <div id="stepContent"></div>
+
+  <div class="step-nav">
+    <button class="nav-btn nav-prev" id="nav-prev" onclick="goPrev()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Назад
+    </button>
+    <div class="step-dots" id="step-dots"></div>
+    <button class="nav-btn nav-next" id="nav-next" onclick="goNext()">
+      Далее
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- ═══ OVERVIEW SCREEN ═══ -->
+<div id="overviewScreen" class="ov-wrap hidden">
+  <div class="ov-topbar">
+    <span class="ov-title">Общий прогресс</span>
+    <button class="back-btn" onclick="closeOverview()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      Закрыть
+    </button>
+  </div>
+  <div id="ovContent"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script>
+/* ══════════════════════════════════════════════════
+   CHIP INPUT
+══════════════════════════════════════════════════ */
+const SYSTEM_PRESETS = ['SAP','1C','DWH','Oracle','PostgreSQL','Kafka','Excel','Salesforce','Bitrix'];
+const BIZUNIT_PRESETS = ['Розница','B2B','Логистика','HR','Финансы','Маркетинг','IT'];
+
+function initChips(chipsId, inputId, presetsId, presets, store) {
+  const wrap = document.getElementById(chipsId);
+  const inp = document.getElementById(inputId);
+  const pCont = document.getElementById(presetsId);
+
+  function renderChips() {
+    Array.from(wrap.querySelectorAll('.chip')).forEach(c => c.remove());
+    store.forEach((v, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `${esc(v)}<button class="chip-x" onclick="removeChip('${store===systemsData?'sys':'biz'}',${i})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>`;
+      wrap.insertBefore(chip, inp);
+    });
+    // update presets
+    pCont.querySelectorAll('.chip-preset').forEach(b => {
+      b.classList.toggle('sel', store.includes(b.dataset.val));
+    });
+  }
+
+  // build preset buttons
+  presets.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'chip-preset';
+    b.dataset.val = p;
+    b.textContent = p;
+    b.onclick = () => {
+      if (store.includes(p)) { store.splice(store.indexOf(p),1); }
+      else store.push(p);
+      renderChips();
+    };
+    pCont.appendChild(b);
+  });
+
+  inp.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ',') && inp.value.trim()) {
+      e.preventDefault();
+      const v = inp.value.trim().replace(/,$/, '');
+      if (v && !store.includes(v)) store.push(v);
+      inp.value = '';
+      renderChips();
+    } else if (e.key === 'Backspace' && !inp.value && store.length) {
+      store.pop();
+      renderChips();
+    }
+  });
+
+  renderChips();
+  return renderChips;
+}
+
+const systemsData = [];
+const bizUnitData = [];
+let renderSys, renderBiz;
+
+/* ══════════════════════════════════════════════════
+   DATA
+══════════════════════════════════════════════════ */
+const GROUPS = [
+  {id:"prep",title:"Подготовка",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,items:[
+    {id:1,text:"Определить и уточнить владельца отчета",type:"manual",
+      tip:"Владелец — это бизнес-заказчик, который будет принимать отчет и отвечать за актуальность требований. Обычно это руководитель направления или product owner.",
+      warn:"Частая ошибка: путать владельца с потребителем отчета. Владелец один, потребителей может быть много."},
+    {id:2,text:"Добавить владельца и ответственного в эпик Jira",type:"copy",copyField:"owner",copyLabel:"Владелец",
+      tip:"В Jira: откройте эпик → поле «Ответственный» для аналитика, в описание добавьте владельца.",
+      depends:[1]},
+    {id:3,text:"Проверить название отчета — понятное и специфичное?",type:"ai_prompt",aiType:"name",
+      tip:"Хорошее название: «Продажи по регионам — розница, ежемесячно». Плохое: «Отчет по продажам». Название должно отличать этот отчет от десятков других.",
+      warn:"Не используйте слово «Новый» в названии — оно устареет через неделю."},
+    {id:4,text:"Уточнить и согласовать описание отчета с владельцем",type:"ai_prompt",aiType:"desc",
+      tip:"Описание должно содержать: что показывает, для кого, какие источники данных, периодичность обновления. Отправьте владельцу на согласование.",
+      depends:[1]},
+  ]},
+  {id:"jira",title:"Jira — заполнение эпика",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,items:[
+    {id:5,text:"Добавить описание отчета в эпик Jira",type:"copy",copyField:"description",copyLabel:"Описание",
+      tip:"Вставьте согласованное описание в поле «Описание» эпика.",depends:[4]},
+    {id:7,text:"Добавить ссылку на Power BI в эпик (поле «Окружение»)",type:"copy",copyField:"pbiLink",copyLabel:"PBI ссылка",
+      tip:"Поле «Окружение» (Environment) в Jira — туда вставляется прямая ссылка на отчет."},
+    {id:8,text:"Добавить метки используемых систем в эпик Jira",type:"copy",copyField:"systems",copyLabel:"Системы",
+      tip:"Метки добавляются через поле Labels в Jira. Формат: system-sap, system-1c, system-dwh и т.д."},
+    {id:9,text:"Указать направления бизнеса (поле «Компонент») в эпик Jira",type:"copy",copyField:"bizUnit",copyLabel:"Направление",
+      tip:"Поле «Компонент» (Component) — выберите из списка или создайте новый компонент."},
+    {id:11,text:"Добавить метку bi-catalog-rs в эпик",type:"copy",copyValue:"bi-catalog-rs",copyLabel:"Метка",
+      tip:"Эта метка нужна для автоматической индексации отчета в каталоге аналитики.",
+      conditional:"needCatalog"},
+  ]},
+  {id:"rs",title:"Report Server",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,items:[
+    {id:6,text:"Заполнить поле «Описание отчета» на RS",type:"copy",copyField:"description",copyLabel:"Описание",
+      tip:"На RS: правый клик на отчете → Manage → Description. Используйте то же описание, что в Jira.",depends:[4]},
+    {id:18,text:"Настроить подключение к источникам данных на RS",type:"manual",
+      tip:"RS → Manage → Data Sources. Убедитесь, что credentials настроены как 'Stored credentials', а не Windows Auth, если отчет обновляется по расписанию.",
+      warn:"Частая ошибка: оставить «Use as Windows credentials» для учётки, у которой нет прав на источник."},
+    {id:19,text:"Настроить расписание обновлений на RS",type:"manual",
+      tip:"RS → Manage → Scheduled Refresh. Согласуйте время с владельцем (п.17) до настройки.",depends:[17]},
+  ]},
+  {id:"access",title:"Доступы и безопасность",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`,items:[
+    {id:10,text:"Уточнить необходимость добавления отчета в каталог аналитики",type:"manual",
+      tip:"Каталог аналитики — внутренний портал для поиска отчетов. Если отчет публичный для компании — добавляйте.",
+      conditional:"needCatalog"},
+    {id:12,text:"Уточнить необходимость доступов по умолчанию",type:"manual",
+      tip:"Доступы по умолчанию — это набор групп AD, которые получат доступ к отчету автоматически. Уточните у владельца, кому нужен доступ.",
+      conditional:"needDefAccess"},
+    {id:13,text:"Согласовать ролевую модель с ДИБ",type:"link",url:"https://jira.domen.ru/plugins/servlet/desk/portal/3/create/33",
+      tip:"Заявка в ДИБ: укажите название отчета, список ролей и какие данные видит каждая роль. Ожидание ответа: 1–5 рабочих дней.",
+      warn:"Это самый долгий этап — подавайте заявку как можно раньше.",
+      conditional:"hasRoleModel"},
+    {id:14,text:"Заполнить каталог продуктов IDM",type:"link",url:"https://sharepoint.domen.ru/sites/Analytics_DDMA/Shared%20Documents/IDM/",
+      tip:"Откройте Excel-файл каталога на SharePoint, добавьте строку с названием отчета, владельцем, группами доступа."},
+    {id:15,text:"Создать заявку на изменение данных IDM",type:"link",url:"https://jira.domen.ru/plugins/servlet/desk/portal/3/create/992",
+      tip:"После заполнения каталога — создайте заявку, чтобы IDM-команда применила изменения.",depends:[14]},
+    {id:16,text:"Привязать задачу IDM к эпику проекта",type:"manual",
+      tip:"В Jira: откройте задачу IDM → Link → ссылка на эпик. Тип связи: 'is caused by'.",depends:[15]},
+  ]},
+  {id:"schedule",title:"Расписание и публикация",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,items:[
+    {id:17,text:"Согласовать расписание обновлений с владельцем",type:"manual",
+      tip:"Уточните: как часто обновлять (ежедневно/еженедельно), в какое время, допустимое окно задержки. Зафиксируйте в комментарии.",depends:[1]},
+    {id:20,text:"Выложить актуальный pbix на SharePoint",type:"link",urlField:"sharepointLink",
+      tip:"Загрузите .pbix файл в согласованную папку на SharePoint. Это бэкап и версионирование."},
+  ]},
+  {id:"close",title:"Закрытие",icon:`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,items:[
+    {id:21,text:"Перевести эпик в статус «Done»",type:"link",urlField:"jiraEpic",
+      tip:"Убедитесь, что все подзадачи закрыты, прежде чем закрывать эпик.",depends:[5,7,8,9]},
+    {id:22,text:"Перевести задачу ДИС в статус «Done»",type:"manual",
+      tip:"Задача ДИС — это заявка на информационную безопасность, если она была создана."},
+  ]},
+];
+
+const FIELDS = ['reportName','description','owner','analyst','jiraEpic','pbiLink','sharepointLink'];
+const CONDS = ['needCatalog','hasRoleModel','needDefAccess'];
+
+let form = {}, checked = {}, comments = {}, conds = {}, ovCollapsed = {};
+let currentStep = 0;
+let activeItems = [];
+let prevScreen = 'step'; // 'step' or 'form'
+
+/* ══ Helpers ══ */
+const $ = id => document.getElementById(id);
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function flash(m){const t=$('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.add('hidden'),2200)}
+
+function getActiveItems(){
+  const a=[];
+  GROUPS.forEach(g=>g.items.forEach(i=>{
+    if(i.conditional&&!conds[i.conditional])return;
+    a.push(i);
+  }));
+  return a;
+}
+function isLocked(item){
+  if(!item.depends)return false;
+  return item.depends.some(d=>!checked[d]);
+}
+function getBlocker(item){
+  if(!item.depends)return'';
+  return'Сначала: #'+item.depends.filter(d=>!checked[d]).join(', #');
+}
+function getGroupTitle(itemId){
+  for(const g of GROUPS){if(g.items.some(i=>i.id===itemId))return g.title;}
+  return'';
+}
+function getFieldVal(field){
+  if(field==='systems') return systemsData.join(', ');
+  if(field==='bizUnit') return bizUnitData.join(', ');
+  return form[field]||'';
+}
+
+/* ══ AI Prompts ══ */
+function getAiPrompt(type){
+  if(type==='name') return `Ты — эксперт по аналитике и Power BI. Оцени название отчета: "${form.reportName||'(не указано)'}"
+
+Проверь:
+1. Достаточно ли специфичное (отличает от других отчетов)?
+2. Понятно ли без контекста?
+3. Нет ли слов-паразитов (Новый, Тестовый, Копия)?
+
+Если название хорошее — скажи почему. Если нет — предложи 2-3 варианта улучшения.
+Ответь коротко, по-русски, без вступлений.`;
+
+  if(type==='desc') return `Ты — эксперт по аналитике и Power BI. Оцени описание отчета:
+
+Название: "${form.reportName||'(не указано)'}"
+Описание: "${form.description||'(не указано)'}"
+
+Хорошее описание содержит:
+1. Что показывает отчет (метрики, срезы)
+2. Для кого предназначен (аудитория)
+3. Источники данных
+4. Периодичность обновления
+
+Оцени полноту, предложи улучшения. Если чего-то не хватает — допиши пример.
+Ответь коротко, по-русски, структурированно.`;
+
+  if(type==='generate') return `Ты — эксперт по аналитике. Сгенерируй описание для отчета Power BI.
+
+Название: "${form.reportName||'(не указано)'}"
+Владелец: ${form.owner||'не указан'}
+Системы-источники: ${systemsData.join(', ')||'не указаны'}
+Направление бизнеса: ${bizUnitData.join(', ')||'не указано'}
+
+Напиши краткое профессиональное описание (3-5 предложений), которое включает:
+- Что показывает отчет
+- Для кого предназначен
+- Основные метрики и срезы
+- Источники данных
+
+Ответь только текстом описания, без вступлений, по-русски.`;
+  return'';
+}
+
+/* ══ Form ══ */
+function removeChip(type, idx){
+  if(type==='sys'){systemsData.splice(idx,1);renderSys();}
+  else{bizUnitData.splice(idx,1);renderBiz();}
+}
+
+function readForm(){
+  FIELDS.forEach(k=>{const el=$('f_'+k);if(el)form[k]=el.value});
+  CONDS.forEach(k=>{const el=$('f_'+k);if(el)conds[k]=el.checked});
+}
+function writeForm(){
+  FIELDS.forEach(k=>{if($('f_'+k))$('f_'+k).value=form[k]||''});
+  CONDS.forEach(k=>{if($('f_'+k))$('f_'+k).checked=!!conds[k]});
+}
+
+function startChecklist(){
+  readForm();
+  if(!form.reportName.trim()||!form.description.trim()){flash('Заполните название и описание');return}
+  activeItems = getActiveItems();
+  currentStep = 0;
+  $('formScreen').classList.add('hidden');
+  $('stepScreen').classList.remove('hidden');
+  renderStep();
+}
+
+function goBack(){
+  writeForm();
+  $('stepScreen').classList.add('hidden');
+  $('overviewScreen').classList.add('hidden');
+  $('formScreen').classList.remove('hidden');
+}
+
+/* ══ Step Navigation ══ */
+function goNext(){
+  if(currentStep < activeItems.length-1){currentStep++;renderStep();}
+}
+function goPrev(){
+  if(currentStep > 0){currentStep--;renderStep();}
+}
+function goToStep(idx){
+  currentStep=idx;
+  $('overviewScreen').classList.add('hidden');
+  $('stepScreen').classList.remove('hidden');
+  renderStep();
+}
+
+/* ══ Render Step ══ */
+function renderStep(){
+  activeItems = getActiveItems();
+  const total = activeItems.length;
+  const done = activeItems.filter(i=>checked[i.id]).length;
+  const pct = total ? Math.round(done/total*100) : 0;
+  const pcol = pct===100?'var(--green)':pct>60?'var(--orange)':'var(--accent)';
+  const bg = pct===100?'var(--green)':'linear-gradient(90deg,var(--accent),var(--purple))';
+
+  // mini prog
+  const mpFill = $('mp-fill');
+  if(mpFill){mpFill.style.width=pct+'%';mpFill.style.background=bg;}
+  const mpTxt = $('mp-txt');
+  if(mpTxt)mpTxt.textContent=`${done}/${total} · ${pct}%`;
+
+  // dots
+  const dotsEl = $('step-dots');
+  if(dotsEl){
+    let dotsH='';
+    activeItems.forEach((item,i)=>{
+      const cls = i===currentStep?'active':checked[item.id]?'done-dot':'';
+      dotsH+=`<button class="step-dot ${cls}" onclick="currentStep=${i};renderStep()" title="#${item.id}"></button>`;
+    });
+    dotsEl.innerHTML=dotsH;
+  }
+
+  // prev/next
+  const prev=$('nav-prev'),next=$('nav-next');
+  if(prev)prev.style.visibility=currentStep>0?'visible':'hidden';
+  if(next){
+    if(currentStep>=total-1){
+      next.textContent='';
+      next.innerHTML='Готово <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+      next.onclick=()=>showOverview();
+    } else {
+      next.innerHTML='Далее <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+      next.onclick=goNext;
+    }
+  }
+
+  if(currentStep>=total){currentStep=total-1}
+  if(total===0){$('stepContent').innerHTML='<div style="text-align:center;color:var(--muted);padding:40px">Нет активных пунктов</div>';return;}
+
+  const item = activeItems[currentStep];
+  const isDone = !!checked[item.id];
+  const locked = isLocked(item);
+  const blocker = getBlocker(item);
+  const grpTitle = getGroupTitle(item.id);
+
+  let h = `<div class="step-card">`;
+  h += `<div class="step-header">`;
+  h += `<div class="step-num"><span>#${item.id}</span><span class="grp-badge">${esc(grpTitle)}</span><span style="margin-left:auto;font-size:10px;color:var(--dim)">${currentStep+1} из ${total}</span></div>`;
+  h += `<div class="step-title">${esc(item.text)}</div>`;
+  if(locked) h+=`<div class="step-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>${esc(blocker)}</div>`;
+  h += `</div>`;
+
+  h += `<div class="step-body">`;
+
+  // tip
+  if(item.tip){
+    h+=`<div class="tip-box">
+      <div class="tip-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>Как сделать</div>
+      <div class="tip-text">${esc(item.tip)}</div>
+      ${item.warn?`<div class="tip-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>${esc(item.warn)}</div>`:''}
+    </div>`;
+  }
+
+  // action block
+  if(item.type==='copy'||(item.type==='ai_prompt')||(item.type==='link')){
+    h+=`<div class="step-action">`;
+    const alabel = item.type==='ai_prompt'?'AI-проверка — скопируй промт':
+                   item.type==='copy'?'Скопировать значение':
+                   'Перейти по ссылке';
+    h+=`<div class="action-label">${alabel}</div>`;
+
+    if(item.type==='copy'){
+      const val = item.copyValue || getFieldVal(item.copyField||'');
+      if(val){
+        h+=`<div class="copy-val-block">
+          <div class="copy-val" id="cv_${item.id}">${esc(val)}</div>
+          <button class="copy-btn" id="cb_${item.id}" onclick="copyVal('${item.id}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            ${esc(item.copyLabel||'Копировать')}
+          </button>
+        </div>`;
+      } else {
+        h+=`<span class="link-miss">Значение не заполнено в данных отчета</span>`;
+      }
+    }
+
+    if(item.type==='ai_prompt'){
+      const prompt = getAiPrompt(item.aiType);
+      h+=`<div class="prompt-steps">
+        <ol>
+          <li>Скопируй промт кнопкой ниже</li>
+          <li>Открой ChatGPT, Claude или другой AI-ассистент</li>
+          <li>Вставь промт и получи оценку</li>
+        </ol>
+      </div>`;
+      h+=`<div class="prompt-block" id="prompt_${item.id}">${esc(prompt)}</div>`;
+      h+=`<button class="copy-btn" id="cb_${item.id}" onclick="copyPrompt('${item.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        Скопировать промт
+      </button>`;
+      // generate prompt for ai_prompt type desc also
+      if(item.aiType==='desc'){
+        const genPrompt = getAiPrompt('generate');
+        h+=`<div style="margin-top:10px"><div class="action-label">Сгенерировать описание</div>`;
+        h+=`<div class="prompt-block" id="genprompt_${item.id}">${esc(genPrompt)}</div>`;
+        h+=`<button class="copy-btn" id="gcb_${item.id}" onclick="copyGenPrompt('${item.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          Скопировать промт для генерации
+        </button></div>`;
+      }
+    }
+
+    if(item.type==='link'){
+      const url = item.url||(item.urlField?getFieldVal(item.urlField):'')||'';
+      if(url){
+        h+=`<a href="${esc(url)}" target="_blank" rel="noopener" class="link-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Открыть
+        </a>`;
+      } else {
+        h+=`<span class="link-miss">Ссылка не указана в данных отчета</span>`;
+      }
+    }
+
+    h+=`</div>`;
+  }
+
+  // comment
+  h+=`<div style="margin-bottom:12px">
+    <div class="action-label" style="font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px">Комментарий</div>
+    <textarea class="step-comment" id="cmt_${item.id}" placeholder="Заметки, детали..." oninput="comments[${item.id}]=this.value">${esc(comments[item.id]||'')}</textarea>
+  </div>`;
+
+  // check button
+  h+=`<div class="check-area">
+    <button class="check-btn ${isDone?'done':''} ${locked?'':''}" id="chkbtn_${item.id}" onclick="${locked?`flash('Сначала: ${blocker}')`:(`toggleCheck(${item.id})`)}" style="${locked?'opacity:.5;cursor:not-allowed':''}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      ${isDone?'Выполнено':'Отметить как выполнено'}
+    </button>
+  </div>`;
+
+  h+=`</div></div>`;
+  $('stepContent').innerHTML=h;
+}
+
+function toggleCheck(id){
+  checked[id]=!checked[id];
+  renderStep();
+  if(checked[id]) flash('Пункт выполнен');
+}
+
+function copyVal(id){
+  const el=document.getElementById('cv_'+id);
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent);
+  const btn=document.getElementById('cb_'+id);
+  if(btn){btn.classList.add('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Скопировано';
+  setTimeout(()=>{btn.classList.remove('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Копировать';},1400);}
+}
+
+function copyPrompt(id){
+  const el=document.getElementById('prompt_'+id);
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent);
+  const btn=document.getElementById('cb_'+id);
+  if(btn){btn.classList.add('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Скопировано';
+  setTimeout(()=>{btn.classList.remove('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Скопировать промт';},1400);}
+}
+function copyGenPrompt(id){
+  const el=document.getElementById('genprompt_'+id);
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent);
+  const btn=document.getElementById('gcb_'+id);
+  if(btn){btn.classList.add('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Скопировано';
+  setTimeout(()=>{btn.classList.remove('copied');btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Скопировать промт для генерации';},1400);}
+}
+
+/* ══ Overview ══ */
+function showOverview(){
+  $('stepScreen').classList.add('hidden');
+  $('overviewScreen').classList.remove('hidden');
+  renderOverview();
+}
+function closeOverview(){
+  $('overviewScreen').classList.add('hidden');
+  $('stepScreen').classList.remove('hidden');
+}
+
+function renderOverview(){
+  const active = getActiveItems();
+  const total = active.length;
+  const done = active.filter(i=>checked[i.id]).length;
+  const pct = total ? Math.round(done/total*100) : 0;
+  const pcol = pct===100?'var(--green)':pct>60?'var(--orange)':'var(--accent)';
+  const bg = pct===100?'var(--green)':'linear-gradient(90deg,var(--accent),var(--purple))';
+
+  let h=`<div class="ov-prog">
+    <div class="ov-prog-top">
+      <span class="op-l">${esc(form.reportName||'—')}</span>
+      <span class="op-r" style="color:${pcol}">${pct}%</span>
+    </div>
+    <div class="ov-prog-bar"><div class="ov-prog-fill" style="width:${pct}%;background:${bg}"></div></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:5px">${done} из ${total} пунктов выполнено</div>
+    ${pct===100?`<div class="ov-done-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Все пункты выполнены! Отчет готов к проду.</div>`:''}
+  </div>`;
+
+  GROUPS.forEach(g=>{
+    const items=g.items.filter(i=>!i.conditional||conds[i.conditional]);
+    if(!items.length)return;
+    const gD=items.filter(i=>checked[i.id]).length;
+    const gT=items.length;
+    const ad=gD===gT;
+    const op=!ovCollapsed[g.id];
+
+    h+=`<div class="ov-grp ${ad?'ad':''}">
+      <div class="ov-gh" onclick="ovCollapsed['${g.id}']=!ovCollapsed['${g.id}'];renderOverview()">
+        <div class="ov-gh-l">
+          <span class="ov-gh-icon">${g.icon}</span>
+          <span class="ov-gt">${esc(g.title)}</span>
+        </div>
+        <div class="ov-gh-r">
+          <span class="bdg ${ad?'bdg-d':'bdg-n'}">${gD}/${gT}</span>
+          <span class="chv ${op?'':'cl'}">▼</span>
+        </div>
+      </div>`;
+
+    if(op){
+      items.forEach((item,i)=>{
+        const globalIdx = active.indexOf(item);
+        const dn=!!checked[item.id];
+        const lock=isLocked(item);
+        const blocker=getBlocker(item);
+        h+=`<div class="ov-item ${dn?'dn':''}" onclick="goToStep(${globalIdx})">
+          <div class="ov-ckb ${dn?'on':''}">
+            ${dn?`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`:''}
+          </div>
+          <div class="ov-item-body">
+            <div class="ov-item-txt"><span class="ov-item-num">#${item.id}</span>${esc(item.text)}</div>
+            ${comments[item.id]?`<div class="ov-item-cmt">${esc(comments[item.id])}</div>`:''}
+            ${lock&&!dn?`<div class="ov-item-lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>${esc(blocker)}</div>`:''}
+          </div>
+        </div>`;
+      });
+    }
+    h+=`</div>`;
+  });
+
+  $('ovContent').innerHTML=h;
+}
+
+/* ══ Save / Load ══ */
+function saveFile(){
+  const d=JSON.stringify({form,checked,comments,conds,systems:systemsData,bizUnit:bizUnitData,ts:new Date().toISOString()},null,2);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([d],{type:'application/json'}));
+  a.download=`checklist_${(form.reportName||'report').replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();URL.revokeObjectURL(a.href);flash('Сохранено');
+}
+function loadFile(e){
+  const f=e.target.files?.[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>{try{
+    const d=JSON.parse(ev.target.result);
+    if(d.form)form=d.form;
+    if(d.checked)checked=d.checked;
+    if(d.comments)comments=d.comments;
+    if(d.conds)conds=d.conds;
+    if(d.systems){systemsData.length=0;d.systems.forEach(v=>systemsData.push(v));renderSys();}
+    if(d.bizUnit){bizUnitData.length=0;d.bizUnit.forEach(v=>bizUnitData.push(v));renderBiz();}
+    writeForm();
+    startChecklist();
+    flash('Загружено');
+  }catch{flash('Ошибка файла')}};r.readAsText(f);e.target.value='';
+}
+function resetAll(){if(!confirm('Сбросить весь прогресс?'))return;checked={};comments={};renderStep();flash('Прогресс сброшен')}
+
+/* ══ Init ══ */
+window.addEventListener('DOMContentLoaded',()=>{
+  renderSys = initChips('systems-chips','systems-inp','systems-presets',SYSTEM_PRESETS,systemsData);
+  renderBiz = initChips('bizunit-chips','bizunit-inp','bizunit-presets',BIZUNIT_PRESETS,bizUnitData);
+});
+</script>
+</body>
+</html>
