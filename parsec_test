@@ -1,176 +1,472 @@
 # %% [markdown]
-# # Parsec — тест подключения
+# # Parsec — тест-пэд v2
+# Всё в pandas. Сессия открывается в SETUP, используется до CLOSE.
+
+# %% [markdown]
+# ## SETUP
 
 # %%
 import httpx
 from lxml import etree
-import textwrap
+import pandas as pd
+from datetime import datetime, timezone, timedelta
 
-# ── Параметры ─────────────────────────────────────────────────────────────────
-HOST     = "192.168.1.50"   # <-- поменяй на реальный IP
+HOST     = "192.168.1.50"
 DOMAIN   = "SYSTEM"
 USERNAME = "parsec"
 PASSWORD = "parsec"
 
-BASE_URL = f"http://{HOST}:10101/IntegrationService/IntegrationService.asmx"
+BASE_URL  = "http://" + HOST + ":10101/IntegrationService/IntegrationService.asmx"
 NS_PARSEC = "http://parsec.ru/Parsec3IntergationService"
 NS_SOAP   = "http://schemas.xmlsoap.org/soap/envelope/"
 
+pd.set_option("display.max_columns",  None)
+pd.set_option("display.max_rows",     100)
+pd.set_option("display.width",        200)
+pd.set_option("display.max_colwidth", 60)
 
-# %% [markdown]
-# ## 1. Проверка TCP-соединения (до SOAP)
+# ── transport ─────────────────────────────────────────────────────────────────
 
-# %%
-import socket
+_HTTP = httpx.Client(timeout=60)
 
-def check_port(host, port=10101, timeout=5):
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            print(f"✓ TCP {host}:{port} — порт открыт")
-            return True
-    except socket.timeout:
-        print(f"✗ TCP {host}:{port} — таймаут (хост недоступен или порт закрыт фаерволом)")
-        return False
-    except ConnectionRefusedError:
-        print(f"✗ TCP {host}:{port} — соединение отклонено (порт закрыт)")
-        return False
-    except Exception as e:
-        print(f"✗ TCP {host}:{port} — ошибка: {e}")
-        return False
+def _post(method, body):
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        + '<soap:Envelope xmlns:soap="' + NS_SOAP + '"'
+        + ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+        + ' xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
+        + '<soap:Body>'
+        + '<' + method + ' xmlns="' + NS_PARSEC + '">'
+        + body.strip()
+        + '</' + method + '>'
+        + '</soap:Body></soap:Envelope>'
+    ).encode("utf-8")
+    resp = _HTTP.post(BASE_URL, content=xml, headers={
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": '"' + NS_PARSEC + "/" + method + '"',
+    })
+    resp.raise_for_status()
+    return etree.fromstring(resp.content)
 
-check_port(HOST)
+def _sid():
+    return SESSION_ID
 
+def _lname(node):
+    return etree.QName(node.tag).localname
 
-# %% [markdown]
-# ## 2. Сырой SOAP-запрос OpenSession — смотрим что реально летит
+def _find(node, tag):
+    for ch in node.iter():
+        if _lname(ch) == tag:
+            return (ch.text or "").strip()
+    return None
 
-# %%
-def make_envelope(method: str, body_inner: str) -> bytes:
-    xml = f"""<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope
-    xmlns:soap="{NS_SOAP}"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <soap:Body>
-    <{method} xmlns="{NS_PARSEC}">
-{textwrap.indent(body_inner.strip(), "      ")}
-    </{method}>
-  </soap:Body>
-</soap:Envelope>"""
-    return xml.encode("utf-8")
+def _findall(node, tag):
+    return [ch for ch in node.iter() if _lname(ch) == tag]
 
+def _dt(dt):
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-payload = make_envelope("OpenSession", f"""
-<domain>{DOMAIN}</domain>
-<userName>{USERNAME}</userName>
-<password>{PASSWORD}</password>
-""")
+# ── открыть сессию ────────────────────────────────────────────────────────────
 
-print("=== Отправляемый XML ===")
-print(payload.decode("utf-8"))
-
-
-# %% [markdown]
-# ## 3. Отправка — смотрим сырой ответ
-
-# %%
-try:
-    resp = httpx.post(
-        BASE_URL,
-        content=payload,
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": f'"{NS_PARSEC}/OpenSession"',
-        },
-        timeout=15,
-    )
-    print(f"HTTP статус: {resp.status_code}")
-    print(f"\n=== Сырой ответ ===")
-    print(resp.text)
-except Exception as e:
-    print(f"✗ Ошибка запроса: {type(e).__name__}: {e}")
-
-
-# %% [markdown]
-# ## 4. Парсим SessionID из ответа
-
-# %%
-def extract_session_id(response_text: str):
-    try:
-        root = etree.fromstring(response_text.encode("utf-8"))
-    except Exception as e:
-        print(f"✗ XML не распарсился: {e}")
-        return None
-
-    # Ищем все теги по всему дереву — не зависим от namespace
-    all_tags = {etree.QName(el.tag).localname: el for el in root.iter()}
-    print("\n=== Все теги в ответе ===")
-    for name, el in all_tags.items():
-        if el.text and el.text.strip():
-            print(f"  <{name}> = {el.text.strip()[:80]}")
-
-    # Пробуем достать SessionID
-    session_el = all_tags.get("SessionID")
-    result_el  = all_tags.get("Result")
-    error_el   = all_tags.get("ErrorMessage")
-
-    if result_el is not None:
-        print(f"\nResult: {result_el.text}")
-    if error_el is not None and error_el.text:
-        print(f"ErrorMessage: {error_el.text}")
-    if session_el is not None and session_el.text:
-        print(f"\n✓ SessionID: {session_el.text.strip()}")
-        return session_el.text.strip()
-    else:
-        print("\n✗ SessionID не найден")
-        return None
-
-session_id = extract_session_id(resp.text)
-
-
-# %% [markdown]
-# ## 5. Тест одного метода — GetOrgUnitsHierarhy
-
-# %%
-if session_id:
-    payload2 = make_envelope("GetOrgUnitsHierarhy", f"""
-<sessionID>{session_id}</sessionID>
-""")
-    try:
-        resp2 = httpx.post(
-            BASE_URL,
-            content=payload2,
-            headers={
-                "Content-Type": "text/xml; charset=utf-8",
-                "SOAPAction": f'"{NS_PARSEC}/GetOrgUnitsHierarhy"',
-            },
-            timeout=15,
-        )
-        print(f"HTTP статус: {resp2.status_code}")
-        print(f"\n=== Ответ (первые 2000 символов) ===")
-        print(resp2.text[:2000])
-    except Exception as e:
-        print(f"✗ {type(e).__name__}: {e}")
+root = _post("OpenSession",
+    "<domain>"    + DOMAIN   + "</domain>"
+    + "<userName>" + USERNAME + "</userName>"
+    + "<password>" + PASSWORD + "</password>"
+)
+SESSION_ID = _find(root, "SessionID")
+if SESSION_ID:
+    print("✓ Сессия: " + SESSION_ID)
 else:
-    print("Пропускаем — сессия не открыта.")
+    print("✗ " + str(_find(root, "ErrorMessage")))
 
 
 # %% [markdown]
-# ## 6. Закрываем сессию
+# ---
+# ## СПРАВОЧНИК ПОЛЕЙ СОБЫТИЙ
+# Все доступные GUID-ы для GetEventHistoryResult.
+# Скопируй нужные в ячейку с запросом событий.
 
 # %%
-if session_id:
-    payload3 = make_envelope("CloseSession", f"""
-<sessionID>{session_id}</sessionID>
-""")
-    resp3 = httpx.post(
-        BASE_URL,
-        content=payload3,
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": f'"{NS_PARSEC}/CloseSession"',
-        },
-        timeout=10,
+ALL_EVENT_FIELDS = {
+    # ── время ─────────────────────────────────────────────────────────────────
+    "event_date":            "71b03d7b-2e11-47cd-bf47-adaf320aeb10",
+    "event_time":            "c7ad4f51-d8af-4944-bf92-23714715147e",
+    "event_datetime":        "2c5ee108-28e3-4dcc-8c95-7f3222d8e67f",
+    # ── тип события ──────────────────────────────────────────────────────────
+    "transaction_code_10":   "57ca38e4-ed6f-4d12-adcb-2faa16f950d7",  # int 590144...
+    "transaction_code_hex":  "c4ae9465-8375-4169-ba61-eb7e365a7352",  # hex
+    "transaction_name":      "d1847aff-11aa-4ef2-aaaa-795ceefe5f9f",  # читаемое название
+    # ── где ──────────────────────────────────────────────────────────────────
+    "territory_name":        "633904b5-971b-4751-96a0-92dc03d5f616",  # название источника
+    "territory_ids":         "42dab9c6-5d30-4030-8ccd-2cad6fcbc5f2",  # GUID(ы) массивом
+    "zone_name":             "4c5807cb-2c06-4725-9243-747e40c41d6c",
+    "part_name":             "2ab38696-1e30-4e04-a956-b951cb7c2033",
+    "workstation":           "89c9d5ac-6e13-4715-a524-7c3b34931385",
+    # ── кто ──────────────────────────────────────────────────────────────────
+    "person_id":             "7c6d82a0-c8c8-495b-9728-357807193d23",  # GUID
+    "person_fullname":       "1bf8a893-7d21-4c0c-9a2d-2e333a2d769d",  # из словаря
+    "person_fullname_alt":   "68ef9fd3-a72d-4520-9c63-5c37b0ae8539",  # прямо из события
+    "person_lastname":       "0de358e0-c91b-4333-b902-000000000003",
+    "person_firstname":      "0de358e0-c91b-4333-b902-000000000001",
+    "person_middlename":     "0de358e0-c91b-4333-b902-000000000002",
+    "tab_number":            "0de358e0-c91b-4333-b902-000000000006",
+    "department":            "0de358e0-c91b-4333-b902-000000000004",
+    "department_desc":       "0a679144-d5ce-476d-a56e-0a696f079b71",
+    "organization":          "0de358e0-c91b-4333-b902-000000000009",
+    "access_group":          "0de358e0-c91b-4333-b902-00000000000a",
+    "card_code":             "0de358e0-c91b-4333-b902-000000000005",
+    "card_valid_from":       "0de358e0-c91b-4333-b902-000000000007",
+    "card_valid_to":         "0de358e0-c91b-4333-b902-000000000008",
+    # ── оператор / доп. инфо ─────────────────────────────────────────────────
+    "operator":              "fea92e1c-e07d-4932-a6a1-e8c53e3087d9",
+    "details":               "03ceb65f-dcad-4b56-94b8-be9fdb463988",
+    "summary":               "e5ac823f-c4f6-48e7-bebe-e6d44c57c7ad",
+    "heading":               "99914915-c882-4d11-80ff-57acdc6cc015",
+    "message":               "2f4a647e-4d9e-48ad-bf11-b1e49ffeac7f",
+    "operator_comments":     "66aa3a39-c866-4f34-9e99-e75f9918eae7",
+}
+
+df_fields = pd.DataFrame([
+    {"name": k, "guid": v}
+    for k, v in ALL_EVENT_FIELDS.items()
+])
+print("Доступных полей событий: " + str(len(df_fields)))
+df_fields
+
+
+# %% [markdown]
+# ---
+# ## 1. Запрос событий — выбери нужные поля
+# Укажи имена полей из ALL_EVENT_FIELDS выше.
+
+# %%
+# ── НАСТРОЙ ЗДЕСЬ ─────────────────────────────────────────────────────────────
+HOURS_BACK = 24
+
+MY_FIELDS = [
+    "event_datetime",
+    "transaction_code_10",
+    "transaction_name",
+    "person_fullname",
+    "person_lastname",
+    "person_firstname",
+    "tab_number",
+    "department",
+    "territory_name",
+    "zone_name",
+    "card_code",
+    "person_id",
+]
+
+# Дополнительные фильтры (None = без фильтра)
+FILTER_PERSON_ID    = None   # "guid-..."
+FILTER_TERRITORY_ID = None   # "guid-..."
+MAX_EVENTS          = 5000
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Строим список GUID-ов в нужном порядке
+field_guids = []
+field_names = []
+for name in MY_FIELDS:
+    if name in ALL_EVENT_FIELDS:
+        field_guids.append(ALL_EVENT_FIELDS[name])
+        field_names.append(name)
+    else:
+        print("⚠ Неизвестное поле: " + name)
+
+fields_xml = "<fields>" + "".join("<guid>" + g + "</guid>" for g in field_guids) + "</fields>"
+
+date_to   = datetime.now(timezone.utc)
+date_from = date_to - timedelta(hours=HOURS_BACK)
+
+params = (
+    "<parameters>"
+    + "<StartDate>" + _dt(date_from) + "</StartDate>"
+    + "<EndDate>"   + _dt(date_to)   + "</EndDate>"
+    + "<MaxResultSize>" + str(MAX_EVENTS) + "</MaxResultSize>"
+    + ("" if not FILTER_PERSON_ID    else "<Users><guid>"       + FILTER_PERSON_ID    + "</guid></Users>")
+    + ("" if not FILTER_TERRITORY_ID else "<Territories><guid>" + FILTER_TERRITORY_ID + "</guid></Territories>")
+    + "</parameters>"
+)
+
+root = _post("OpenEventHistorySession", "<sessionID>" + _sid() + "</sessionID>" + params)
+hist_id = _find(root, "Value")
+
+if not hist_id:
+    print("✗ " + str(_find(root, "ErrorMessage")))
+else:
+    root2 = _post("GetEventHistoryResultCount",
+        "<sessionID>" + _sid() + "</sessionID>"
+        + "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>")
+    total = int(_find(root2, "GetEventHistoryResultCountResult") or "0")
+    print("Всего событий: " + str(total) + " | запрашиваем: " + str(min(total, MAX_EVENTS)))
+
+    rows = []
+    chunk = 500
+    for offset in range(0, min(total, MAX_EVENTS), chunk):
+        n    = min(chunk, min(total, MAX_EVENTS) - offset)
+        root3 = _post("GetEventHistoryResult",
+            "<sessionID>" + _sid() + "</sessionID>"
+            + "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>"
+            + fields_xml
+            + "<offset>" + str(offset) + "</offset>"
+            + "<count>"  + str(n)      + "</count>")
+        for ev in _findall(root3, "EventObject"):
+            vals = [ch.text for ch in ev.iter() if _lname(ch) == "anyType"]
+            while len(vals) < len(field_names):
+                vals.append(None)
+            rows.append(vals[:len(field_names)])
+
+    _post("CloseEventHistorySession",
+        "<sessionID>" + _sid() + "</sessionID>"
+        + "<eventHistorySessionID>" + hist_id + "</eventHistorySessionID>")
+
+    df_events = pd.DataFrame(rows, columns=field_names)
+
+    # Приводим datetime
+    if "event_datetime" in df_events.columns:
+        df_events["event_datetime"] = pd.to_datetime(df_events["event_datetime"], utc=True, errors="coerce")
+
+    if "transaction_code_10" in df_events.columns:
+        df_events["transaction_code_10"] = pd.to_numeric(df_events["transaction_code_10"], errors="coerce")
+
+    print("DataFrame: " + str(df_events.shape[0]) + " строк x " + str(df_events.shape[1]) + " столбцов")
+    df_events
+
+
+# %% [markdown]
+# ---
+# ## 2. Все сотрудники — максимум полей
+
+# %%
+# GetOrgUnitsHierarhyWithPersons — дерево подразделений + все сотрудники одним запросом
+# Дополнительно: GetPersonIdentifiers — карты каждого сотрудника
+
+root = _post("GetOrgUnitsHierarhyWithPersons",
+    "<sessionID>" + _sid() + "</sessionID>")
+
+result_el = None
+for ch in root.iter():
+    if _lname(ch) == "GetOrgUnitsHierarhyWithPersonsResult":
+        result_el = ch
+        break
+
+persons  = []
+org_map  = {}  # id -> name для быстрого lookup
+
+if result_el is not None:
+    for obj in result_el:
+        tab = _find(obj, "TAB_NUM")
+        oid = _find(obj, "ID")
+        nm  = _find(obj, "NAME")
+
+        if tab is None:
+            # Это OrgUnit — сохраняем в map
+            if oid and nm:
+                org_map[oid] = nm
+            continue
+
+        # Это Person
+        persons.append({
+            "person_id":   oid,
+            "last_name":   _find(obj, "LAST_NAME"),
+            "first_name":  _find(obj, "FIRST_NAME"),
+            "middle_name": _find(obj, "MIDDLE_NAME"),
+            "tab_number":  tab,
+            "org_id":      _find(obj, "ORG_ID"),
+        })
+
+print("Сотрудников: " + str(len(persons)) + " | Подразделений: " + str(len(org_map)))
+
+df_persons = pd.DataFrame(persons)
+
+# Добавляем название подразделения
+if not df_persons.empty and org_map:
+    df_persons["department"] = df_persons["org_id"].map(org_map)
+
+# Добавляем коды карт (GetPersonIdentifiers для каждого)
+# Внимание: если сотрудников много — займёт время. Убери блок если не нужно.
+LOAD_IDENTIFIERS = True   # False = пропустить
+
+if LOAD_IDENTIFIERS and not df_persons.empty:
+    print("Загружаем карты... (может занять время)")
+    card_rows = []
+    for pid in df_persons["person_id"].dropna():
+        try:
+            root_id = _post("GetPersonIdentifiers",
+                "<sessionID>" + _sid() + "</sessionID>"
+                + "<personID>" + pid + "</personID>")
+            for idf in _findall(root_id, "Identifier"):
+                card_rows.append({
+                    "person_id":  pid,
+                    "card_code":  _find(idf, "CODE"),
+                    "is_primary": _find(idf, "IS_PRIMARY"),
+                    "acc_group":  _find(idf, "ACCGROUP_ID"),
+                })
+        except Exception:
+            pass
+
+    if card_rows:
+        df_cards = pd.DataFrame(card_rows)
+        # Основная карта
+        primary = df_cards[df_cards["is_primary"] == "true"][["person_id","card_code"]]
+        primary = primary.rename(columns={"card_code": "primary_card"})
+        # Все карты через запятую
+        all_cards = (
+            df_cards.groupby("person_id")["card_code"]
+            .apply(lambda x: ", ".join(filter(None, x)))
+            .reset_index()
+            .rename(columns={"card_code": "all_cards"})
+        )
+        df_persons = df_persons.merge(primary,   on="person_id", how="left")
+        df_persons = df_persons.merge(all_cards, on="person_id", how="left")
+        print("Карт загружено: " + str(len(df_cards)))
+
+print("df_persons: " + str(df_persons.shape[0]) + " строк x " + str(df_persons.shape[1]) + " столбцов")
+df_persons
+
+
+# %% [markdown]
+# ---
+# ## 3. Все территории — максимум полей
+
+# %%
+# GetTerritoriesHierarhy возвращает TerritoryWithComponent — максимум доступных полей:
+# ID, TYPE, NAME, DESC, PARENT_ID, COMPONENT_ID, FEATURE_MASK
+
+root = _post("GetTerritoriesHierarhy",
+    "<sessionID>" + _sid() + "</sessionID>")
+
+# Находим массив результатов
+result_el = None
+for ch in root.iter():
+    if _lname(ch) == "GetTerritoriesHierarhyResult":
+        result_el = ch
+        break
+
+TERRITORY_TYPES = {
+    "0": "Папка",
+    "1": "Дверь",
+    "2": "Участок",
+    "3": "Другое",
+}
+
+# FEATURE_MASK — расшифровка битов
+FEATURE_BITS = {
+    0:  "Дверь",
+    1:  "2 считывателя",
+    2:  "APB",
+    3:  "Сложные расписания",
+    4:  "Настольный считыватель",
+    5:  "Охранная зона",
+    6:  "Источник видео",
+    7:  "Турникет",
+    9:  "Расписания не поддерж.",
+    10: "Программный контроллер",
+    12: "Без ограничений лицензии",
+    13: "Лифтовой контроллер",
+    62: "Отключён оператором",
+    63: "Нет лицензии",
+}
+
+def decode_feature_mask(mask_str):
+    if not mask_str:
+        return ""
+    try:
+        mask = int(mask_str)
+    except Exception:
+        return mask_str
+    features = []
+    for bit, name in FEATURE_BITS.items():
+        if mask & (1 << bit):
+            features.append(name)
+    return ", ".join(features) if features else str(mask)
+
+rows = []
+if result_el is not None:
+    for t in result_el:
+        tid    = _find(t, "ID")
+        ttype  = _find(t, "TYPE")
+        tname  = _find(t, "NAME")
+        tdesc  = _find(t, "DESC")
+        parent = _find(t, "PARENT_ID")
+        comp   = _find(t, "COMPONENT_ID")
+        fmask  = _find(t, "FEATURE_MASK")
+
+        rows.append({
+            "id":              tid,
+            "type_code":       ttype,
+            "type_name":       TERRITORY_TYPES.get(str(ttype), str(ttype)),
+            "name":            tname,
+            "desc":            tdesc,
+            "parent_id":       parent,
+            "component_id":    comp,
+            "feature_mask_raw": fmask,
+            "features":        decode_feature_mask(fmask),
+        })
+
+df_terr = pd.DataFrame(rows)
+
+# Добавляем имя родителя для читаемости иерархии
+if not df_terr.empty:
+    id_to_name = df_terr.set_index("id")["name"].to_dict()
+    df_terr["parent_name"] = df_terr["parent_id"].map(id_to_name)
+
+    # Полный путь (parent_name / name)
+    df_terr["full_path"] = df_terr.apply(
+        lambda r: (str(r["parent_name"]) + " / " + str(r["name"]))
+        if r["parent_name"] else str(r["name"]),
+        axis=1
     )
-    print(f"CloseSession HTTP: {resp3.status_code}")
-    print(resp3.text)
+
+print("Территорий: " + str(len(df_terr)))
+print("Типы:")
+print(df_terr["type_name"].value_counts().to_string())
+print()
+df_terr
+
+
+# %% [markdown]
+# ---
+# ## 4. Быстрый срез — только двери
+
+# %%
+df_doors = df_terr[df_terr["type_code"] == "1"].copy()
+print("Дверей: " + str(len(df_doors)))
+df_doors[["id","name","parent_name","features"]]
+
+
+# %% [markdown]
+# ---
+# ## 5. Типы транзакций — полный справочник
+
+# %%
+root = _post("GetTransactionTypes",
+    "<sessionID>" + _sid() + "</sessionID>"
+    + "<classMask>-1</classMask>")
+
+rows = []
+for t in _findall(root, "TransactionType"):
+    rows.append({
+        "id":         _find(t, "ID"),
+        "name":       _find(t, "NAME"),
+        "class_mask": _find(t, "CLASS_MASK"),
+    })
+
+df_ttypes = pd.DataFrame(rows)
+if not df_ttypes.empty:
+    df_ttypes["id"] = pd.to_numeric(df_ttypes["id"], errors="coerce")
+    df_ttypes = df_ttypes.sort_values("id").reset_index(drop=True)
+
+print("Типов транзакций: " + str(len(df_ttypes)))
+df_ttypes
+
+
+# %% [markdown]
+# ---
+# ## CLOSE
+
+# %%
+_post("CloseSession", "<sessionID>" + _sid() + "</sessionID>")
+_HTTP.close()
+print("Сессия закрыта.")
