@@ -130,6 +130,9 @@ entries AS (
 
 -- «Первые события дня» — exit без предшествующего entry в том же операционном дне
 -- (человек зашёл до операционного старта — ночная смена с предыдущего дня)
+-- Исключаем выходы, которые уже закрывают реальную сессию в entries:
+-- такой exit имеет entry в предыдущем op_date и попадает в entries.exit_ts_raw,
+-- дублировать его как orphan не нужно.
 orphan_exits AS (
     SELECT
         b.site_id,
@@ -140,7 +143,7 @@ orphan_exits AS (
         b.event_guid
     FROM base b
     WHERE b.direction = 'exit'
-      -- нет ни одного entry в ту же зону в тот же операционный день ДО этого exit
+      -- нет entry в ту же зону в тот же операционный день ДО этого exit
       AND NOT EXISTS (
           SELECT 1
           FROM base e2
@@ -150,6 +153,15 @@ orphan_exits AS (
             AND e2.op_date   = b.op_date
             AND e2.direction = 'entry'
             AND e2.evt_ts    < b.evt_ts
+      )
+      -- выход не является exit_ts_raw ни одной реальной сессии из entries
+      AND NOT EXISTS (
+          SELECT 1
+          FROM entries en
+          WHERE en.site_id   = b.site_id
+            AND en.person_id = b.person_id
+            AND en.zone_type = b.zone_type
+            AND en.exit_ts_raw = b.evt_ts
       )
 ),
 
