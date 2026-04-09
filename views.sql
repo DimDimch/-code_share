@@ -73,144 +73,141 @@ LEFT JOIN parsecnew_persons p
 CREATE OR REPLACE VIEW v_parsecnew_sessions_raw AS
 WITH
 
--- PARAM: operational_day_start
--- Значение 6 = операционный день начинается в 06:00 MSK.
--- Чтобы использовать календарные сутки — замени 6 на 0 в двух местах ниже.
+-- PARAM: t_duplicate_minutes
+-- Два entry в одну зону с разницей меньше этого порога = дубль прикладывания, игнорируем.
 params AS (
-    SELECT
-        0 AS op_day_start_hour   -- час начала операционного дня (0 = календарные сутки)
+    SELECT 5 AS t_duplicate_minutes
 ),
 
--- Все события нашей площадки с person_id (без анонимных)
+-- Все события: добавляем календарную дату по Москве.
+-- AT TIME ZONE 'Europe/Moscow' важен: без него 01:00 MSK уедет в предыдущие сутки UTC.
 base AS (
     SELECT
         e.site_id,
         e.person_id,
         e.zone_type,
         e.direction,
-        e.event_dt_msk                        AS evt_ts,
-        -- Операционная дата: если час события < op_day_start_hour, относим к предыдущему дню
-        -- PARAM: operational_day_start — второй вхождение
-        CASE
-            WHEN EXTRACT(HOUR FROM e.event_dt_msk) < p.op_day_start_hour
-            THEN (e.event_dt_msk::DATE - INTERVAL '1 day')::DATE
-            ELSE e.event_dt_msk::DATE
-        END                                   AS op_date,
-        e.event_guid,
-        e.access_point_type
+        e.event_dt_msk                                              AS evt_ts,
+        (e.event_dt_msk AT TIME ZONE 'Europe/Moscow')::DATE         AS cal_date
     FROM v_parsecnew_events_enriched e
-    CROSS JOIN params p
     WHERE e.person_id IS NOT NULL
       AND e.zone_type  IS NOT NULL
 ),
 
--- Для каждого entry — ищем ближайший следующий exit в той же зоне
+-- Помечаем дублирующие entry: тот же сотрудник, та же зона, тот же день,
+-- предыдущий entry был менее T_duplicate_minutes назад.
+base_with_lag AS (
+    SELECT
+        b.*,
+        LAG(b.evt_ts) OVER (
+            PARTITION BY b.site_id, b.person_id, b.zone_type, b.direction, b.cal_date
+            ORDER BY b.evt_ts
+        ) AS prev_same_dir_ts
+    FROM base b
+),
+
+-- Убираем дубли entry (< T_duplicate_minutes).
+-- Exit дубли не трогаем — пусть остаются, они не навредят.
+deduped AS (
+    SELECT *
+    FROM base_with_lag
+    WHERE NOT (
+        direction = 'entry'
+        AND prev_same_dir_ts IS NOT NULL
+        AND EXTRACT(EPOCH FROM (evt_ts - prev_same_dir_ts)) / 60.0
+            < (SELECT t_duplicate_minutes FROM params)
+    )
+),
+
+-- Для каждого entry ищем в рамках ТОГО ЖЕ КАЛЕНДАРНОГО ДНЯ:
+--   next_exit  — ближайший exit в той же зоне
+--   next_entry — ближайший следующий entry в той же зоне (повторный вход = скрытый выход)
 entries AS (
-    SELECT
-        b.site_id,
-        b.person_id,
-        b.zone_type,
-        b.op_date,
-        b.evt_ts     AS entry_ts,
-        b.event_guid AS entry_guid,
-        -- Ближайший exit после этого entry (по времени, та же зона)
-        MIN(x.evt_ts) AS exit_ts_raw
-    FROM base b
-    LEFT JOIN base x
-        ON  x.site_id   = b.site_id
-        AND x.person_id = b.person_id
-        AND x.zone_type = b.zone_type
-        AND x.direction = 'exit'
-        AND x.evt_ts    > b.evt_ts
-    WHERE b.direction = 'entry'
-    GROUP BY
-        b.site_id, b.person_id, b.zone_type,
-        b.op_date, b.evt_ts, b.event_guid
-),
-
--- «Первые события дня» — exit без предшествующего entry в том же операционном дне
--- (человек зашёл до операционного старта — ночная смена с предыдущего дня)
--- Исключаем выходы, которые уже закрывают реальную сессию в entries:
--- такой exit имеет entry в предыдущем op_date и попадает в entries.exit_ts_raw,
--- дублировать его как orphan не нужно.
-orphan_exits AS (
-    SELECT
-        b.site_id,
-        b.person_id,
-        b.zone_type,
-        b.op_date,
-        b.evt_ts  AS exit_ts,
-        b.event_guid
-    FROM base b
-    WHERE b.direction = 'exit'
-      -- нет entry в ту же зону в тот же операционный день ДО этого exit
-      AND NOT EXISTS (
-          SELECT 1
-          FROM base e2
-          WHERE e2.site_id   = b.site_id
-            AND e2.person_id = b.person_id
-            AND e2.zone_type = b.zone_type
-            AND e2.op_date   = b.op_date
-            AND e2.direction = 'entry'
-            AND e2.evt_ts    < b.evt_ts
-      )
-      -- выход не является exit_ts_raw ни одной реальной сессии из entries
-      AND NOT EXISTS (
-          SELECT 1
-          FROM entries en
-          WHERE en.site_id   = b.site_id
-            AND en.person_id = b.person_id
-            AND en.zone_type = b.zone_type
-            AND en.exit_ts_raw = b.evt_ts
-      )
-),
-
--- Сборка итоговых сессий
-sessions AS (
-
-    -- Обычные сессии: entry + (exit или конец дня)
     SELECT
         e.site_id,
         e.person_id,
         e.zone_type,
-        e.op_date                            AS session_date,
-        e.entry_ts,
-        COALESCE(e.exit_ts_raw,
-            -- Конец операционного дня: op_date + 1 день, op_day_start_hour - 1 сек
-            -- PARAM: operational_day_start — третье вхождение
-            (e.op_date + INTERVAL '1 day' +
-             (SELECT op_day_start_hour FROM params) * INTERVAL '1 hour'
-             - INTERVAL '1 second')
-        )                                    AS exit_ts,
-        CASE
-            WHEN e.exit_ts_raw IS NULL THEN 'проставлено до конца дня'
-            ELSE NULL
-        END                                  AS comment,
-        -- Качество: оба реальные / один восстановлен
-        CASE
-            WHEN e.exit_ts_raw IS NOT NULL THEN 'HIGH'
-            ELSE 'LOW'
-        END                                  AS confidence
-    FROM entries e
+        e.cal_date,
+        e.evt_ts                                                          AS entry_ts,
+        MIN(x.evt_ts) FILTER (WHERE x.direction = 'exit')                AS next_exit,
+        MIN(x.evt_ts) FILTER (WHERE x.direction = 'entry')               AS next_entry
+    FROM deduped e
+    LEFT JOIN deduped x
+        ON  x.site_id   = e.site_id
+        AND x.person_id = e.person_id
+        AND x.zone_type = e.zone_type
+        AND x.evt_ts    > e.evt_ts
+        AND x.cal_date  = e.cal_date   -- только в рамках того же дня
+    WHERE e.direction = 'entry'
+    GROUP BY e.site_id, e.person_id, e.zone_type, e.cal_date, e.evt_ts
+),
 
-    UNION ALL
-
-    -- Сессии для ночников: exit без entry → начало дня → exit
+-- Формируем сессии из entry
+sessions_from_entries AS (
     SELECT
-        ox.site_id,
-        ox.person_id,
-        ox.zone_type,
-        ox.op_date                           AS session_date,
-        -- Начало операционного дня
-        -- PARAM: operational_day_start — четвёртое вхождение
-        (ox.op_date +
-         (SELECT op_day_start_hour FROM params) * INTERVAL '1 hour')
-                                             AS entry_ts,
-        ox.exit_ts,
-        'проставлено от начала дня'          AS comment,
-        'LOW'                                AS confidence
-    FROM orphan_exits ox
+        site_id,
+        person_id,
+        zone_type,
+        cal_date                                                AS session_date,
+        entry_ts,
+        CASE
+            -- Реальный exit есть и он раньше следующего entry (или следующего entry нет)
+            WHEN next_exit IS NOT NULL
+             AND (next_entry IS NULL OR next_exit <= next_entry)
+            THEN next_exit
 
+            -- Следующий entry раньше exit → скрытый выход за 1 секунду до него
+            WHEN next_entry IS NOT NULL
+             AND (next_exit IS NULL OR next_entry < next_exit)
+            THEN next_entry - INTERVAL '1 second'
+
+            -- Нет ни exit ни следующего entry → фантомное присутствие, конец дня
+            ELSE (cal_date::TIMESTAMP AT TIME ZONE 'Europe/Moscow'
+                  + INTERVAL '1 day' - INTERVAL '1 second')
+        END                                                     AS exit_ts,
+        CASE
+            WHEN next_exit IS NOT NULL
+             AND (next_entry IS NULL OR next_exit <= next_entry)
+            THEN NULL
+
+            WHEN next_entry IS NOT NULL
+             AND (next_exit IS NULL OR next_entry < next_exit)
+            THEN 'скрытый выход'
+
+            ELSE 'проставлено до конца дня'
+        END                                                     AS comment,
+        CASE
+            WHEN next_exit IS NOT NULL
+             AND (next_entry IS NULL OR next_exit <= next_entry)
+            THEN 'HIGH'
+            ELSE 'LOW'
+        END                                                     AS confidence
+    FROM entries
+),
+
+-- Orphan exits: exit без предшествующего entry в тот же день
+-- → сессия от начала дня (00:00:00 MSK) до этого exit
+orphan_exits AS (
+    SELECT
+        e.site_id,
+        e.person_id,
+        e.zone_type,
+        e.cal_date                                              AS session_date,
+        (e.cal_date::TIMESTAMP AT TIME ZONE 'Europe/Moscow')   AS entry_ts,   -- 00:00:00 MSK
+        e.evt_ts                                                AS exit_ts,
+        'проставлено от начала дня'                             AS comment,
+        'LOW'                                                   AS confidence
+    FROM deduped e
+    WHERE e.direction = 'exit'
+      AND NOT EXISTS (
+          SELECT 1 FROM deduped e2
+          WHERE e2.site_id   = e.site_id
+            AND e2.person_id = e.person_id
+            AND e2.zone_type = e.zone_type
+            AND e2.direction = 'entry'
+            AND e2.cal_date  = e.cal_date
+            AND e2.evt_ts    < e.evt_ts
+      )
 )
 
 SELECT
@@ -220,15 +217,14 @@ SELECT
     s.session_date,
     s.entry_ts,
     s.exit_ts,
-    -- Длительность в минутах
-    ROUND(
-        EXTRACT(EPOCH FROM (s.exit_ts - s.entry_ts)) / 60.0,
-        1
-    )                                        AS duration_minutes,
+    ROUND(EXTRACT(EPOCH FROM (s.exit_ts - s.entry_ts)) / 60.0, 1) AS duration_minutes,
     s.comment,
     s.confidence
-FROM sessions s
--- Защита от отрицательных и нулевых сессий
+FROM (
+    SELECT * FROM sessions_from_entries
+    UNION ALL
+    SELECT * FROM orphan_exits
+) s
 WHERE s.exit_ts > s.entry_ts;
 
 
