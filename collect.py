@@ -428,19 +428,31 @@ def _get_history_chunk(client, history_session_id, offset, count):
 
 def _parse_event_object(obj_el):
     """
-    Разбирает один EventObject (массив Values) → dict с нужными полями.
+    Разбирает один EventObject -> dict с нужными полями.
     Поля соответствуют порядку EVENT_FIELD_GUIDS.
+
+    Структура XML:
+      <EventObject>
+        <Values>                   <- один узел-контейнер
+          <anyType>val1</anyType>  <- дочерние, по одному на каждое поле
+          <anyType>val2</anyType>
+        </Values>
+      </EventObject>
     """
-    values = _children(obj_el, "Values") if obj_el is not None else []
+    if obj_el is None:
+        return {}
+
+    # Заходим внутрь узла Values, берём его дочерние элементы
+    values_node = _child(obj_el, "Values")
+    values = list(values_node) if values_node is not None else []
 
     def _val(idx):
         if idx < len(values):
             v = values[idx]
-            # Значение может быть прямым текстом элемента или в дочернем string/...
             text = (v.text or "").strip()
             if text:
                 return text
-            # Массив GUID (territory_ids)
+            # Массив GUID (territory_ids — поле [4])
             guids = _children(v, "guid")
             if guids:
                 return [((g.text or "").strip()) for g in guids]
@@ -450,11 +462,10 @@ def _parse_event_object(obj_el):
     raw_dt     = _val(1)
     raw_type   = _val(2)
     raw_person = _val(3)
-    raw_terr   = _val(4)   # массив guid
+    raw_terr   = _val(4)
     raw_card   = _val(5)
-    raw_tname  = _val(6)   # territory_name — строка, приходит напрямую
+    raw_tname  = _val(6)
 
-    # territory_id — берём первый из массива (обычно он один)
     if isinstance(raw_terr, list):
         territory_id = _to_uuid(raw_terr[0]) if raw_terr else None
     else:
@@ -469,8 +480,6 @@ def _parse_event_object(obj_el):
         "territory_name":      raw_tname or None,
         "card_code":           raw_card,
     }
-
-
 def _close_history_session(client, history_session_id):
     try:
         client.call(
