@@ -73,14 +73,20 @@ LEFT JOIN parsecnew_persons p
 CREATE OR REPLACE VIEW v_parsecnew_sessions_raw AS
 WITH
 
--- PARAM: t_duplicate_minutes
--- Два entry в одну зону с разницей меньше этого порога = дубль прикладывания, игнорируем.
+-- Параметры
+-- PARAM: t_duplicate_minutes — порог дубля прикладывания
+-- PARAM: t_max_hours — максимальное время пребывания в зоне.
+--   Используется как fallback если нет реального выхода.
+--   Покрывает ночную смену (~12ч) с запасом.
+--   Значение 16 = разумный максимум для производственного предприятия.
 params AS (
-    SELECT 5 AS t_duplicate_minutes
+    SELECT
+        5  AS t_duplicate_minutes,
+        16 AS t_max_hours
 ),
 
--- Все события: добавляем календарную дату по Москве.
--- AT TIME ZONE 'Europe/Moscow' важен: без него 01:00 MSK уедет в предыдущие сутки UTC.
+-- Все события: добавляем московскую дату (важно AT TIME ZONE — без него
+-- 01:00 MSK = 22:00 UTC предыдущего дня, cal_date уедет на день назад)
 base AS (
     SELECT
         e.site_id,
@@ -94,23 +100,20 @@ base AS (
       AND e.zone_type  IS NOT NULL
 ),
 
--- Помечаем дублирующие entry: тот же сотрудник, та же зона, тот же день,
--- предыдущий entry был менее T_duplicate_minutes назад.
+-- Помечаем дубли entry: тот же сотрудник, та же зона,
+-- предыдущий entry был менее T_duplicate_minutes назад
 base_with_lag AS (
     SELECT
         b.*,
         LAG(b.evt_ts) OVER (
-            PARTITION BY b.site_id, b.person_id, b.zone_type, b.direction, b.cal_date
+            PARTITION BY b.site_id, b.person_id, b.zone_type, b.direction
             ORDER BY b.evt_ts
         ) AS prev_same_dir_ts
     FROM base b
 ),
 
--- Убираем дубли entry (< T_duplicate_minutes).
--- Exit дубли не трогаем — пусть остаются, они не навредят.
 deduped AS (
-    SELECT *
-    FROM base_with_lag
+    SELECT * FROM base_with_lag
     WHERE NOT (
         direction = 'entry'
         AND prev_same_dir_ts IS NOT NULL
@@ -119,9 +122,10 @@ deduped AS (
     )
 ),
 
--- Для каждого entry ищем в рамках ТОГО ЖЕ КАЛЕНДАРНОГО ДНЯ:
---   next_exit  — ближайший exit в той же зоне
---   next_entry — ближайший следующий entry в той же зоне (повторный вход = скрытый выход)
+-- Для каждого entry ищем в окне T_max часов (без ограничения по дню):
+--   next_exit  — ближайший exit той же зоны
+--   next_entry — ближайший следующий entry той же зоны
+--                (повторный вход без exit = скрытый выход перед ним)
 entries AS (
     SELECT
         e.site_id,
@@ -137,21 +141,21 @@ entries AS (
         AND x.person_id = e.person_id
         AND x.zone_type = e.zone_type
         AND x.evt_ts    > e.evt_ts
-        AND x.cal_date  = e.cal_date   -- только в рамках того же дня
+        -- PARAM: t_max_hours — окно поиска
+        AND x.evt_ts    <= e.evt_ts + (SELECT t_max_hours FROM params) * INTERVAL '1 hour'
     WHERE e.direction = 'entry'
     GROUP BY e.site_id, e.person_id, e.zone_type, e.cal_date, e.evt_ts
 ),
 
--- Формируем сессии из entry
 sessions_from_entries AS (
     SELECT
         site_id,
         person_id,
         zone_type,
-        cal_date                                                AS session_date,
+        cal_date                                                    AS session_date,
         entry_ts,
         CASE
-            -- Реальный exit есть и он раньше следующего entry (или следующего entry нет)
+            -- Реальный exit есть и он раньше следующего entry
             WHEN next_exit IS NOT NULL
              AND (next_entry IS NULL OR next_exit <= next_entry)
             THEN next_exit
@@ -161,10 +165,10 @@ sessions_from_entries AS (
              AND (next_exit IS NULL OR next_entry < next_exit)
             THEN next_entry - INTERVAL '1 second'
 
-            -- Нет ни exit ни следующего entry → фантомное присутствие, конец дня
-            ELSE (cal_date::TIMESTAMP AT TIME ZONE 'Europe/Moscow'
-                  + INTERVAL '1 day' - INTERVAL '1 second')
-        END                                                     AS exit_ts,
+            -- Нет ни exit ни следующего entry в окне T_max → закрываем по тайм-ауту
+            -- PARAM: t_max_hours
+            ELSE entry_ts + (SELECT t_max_hours FROM params) * INTERVAL '1 hour'
+        END                                                         AS exit_ts,
         CASE
             WHEN next_exit IS NOT NULL
              AND (next_entry IS NULL OR next_exit <= next_entry)
@@ -175,18 +179,19 @@ sessions_from_entries AS (
             THEN 'скрытый выход'
 
             ELSE 'проставлено до конца дня'
-        END                                                     AS comment,
+        END                                                         AS comment,
         CASE
             WHEN next_exit IS NOT NULL
              AND (next_entry IS NULL OR next_exit <= next_entry)
             THEN 'HIGH'
             ELSE 'LOW'
-        END                                                     AS confidence
+        END                                                         AS confidence
     FROM entries
 ),
 
--- Orphan exits: exit без предшествующего entry в тот же день
--- → сессия от начала дня (00:00:00 MSK) до этого exit
+-- Orphan exits: exit без предшествующего entry в окне T_max ДО него.
+-- Типичный случай: вход не зафиксирован (трансфер, незакрытый считыватель).
+-- Сессию открываем от 00:00:00 того дня когда произошёл exit.
 orphan_exits AS (
     SELECT
         e.site_id,
@@ -194,9 +199,9 @@ orphan_exits AS (
         e.zone_type,
         e.cal_date                                              AS session_date,
         (e.cal_date::TIMESTAMP AT TIME ZONE 'Europe/Moscow')   AS entry_ts,   -- 00:00:00 MSK
-        e.evt_ts                                                AS exit_ts,
-        'проставлено от начала дня'                             AS comment,
-        'LOW'                                                   AS confidence
+        e.evt_ts                                               AS exit_ts,
+        'проставлено от начала дня'                            AS comment,
+        'LOW'                                                  AS confidence
     FROM deduped e
     WHERE e.direction = 'exit'
       AND NOT EXISTS (
@@ -205,8 +210,9 @@ orphan_exits AS (
             AND e2.person_id = e.person_id
             AND e2.zone_type = e.zone_type
             AND e2.direction = 'entry'
-            AND e2.cal_date  = e.cal_date
             AND e2.evt_ts    < e.evt_ts
+            -- ищем entry только в пределах T_max — дальше это уже другая смена
+            AND e2.evt_ts    >= e.evt_ts - (SELECT t_max_hours FROM params) * INTERVAL '1 hour'
       )
 )
 
