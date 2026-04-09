@@ -2,21 +2,16 @@
 # collect.py — сбор данных из СКУД Parsec в PostgreSQL
 # httpx + lxml + psycopg2, без f-строк, без zeep
 #
-# Запуск:
-#   python collect.py --site site_a
-#   python collect.py --site site_b --persons-only   (только синхронизировать сотрудников)
-#   python collect.py --site site_a --events-only    (только события, сотрудников пропустить)
+# Запуск из Jupyter: запусти все ячейки, затем ячейку "## 9. Точка входа"
 #
 # Зависимости:
 #   pip install httpx lxml psycopg2-binary tqdm
 # =============================================================================
 
 # %% [markdown]
-# ## 0. Импорты и аргументы
+# ## 0. Импорты и параметры запуска
 
 # %%
-import sys
-import argparse
 from datetime import datetime, timezone, timedelta
 
 import httpx
@@ -29,32 +24,19 @@ from config import PARSEC_INSTANCES, SITES, PG_DSN, COLLECT
 
 
 # =============================================================================
-# Разбор аргументов командной строки
+# Параметры запуска — меняй здесь перед запуском
 # =============================================================================
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Сбор данных СКУД Parsec -> PostgreSQL"
-    )
-    parser.add_argument(
-        "--site",
-        required=True,
-        choices=list(SITES.keys()),
-        help="Площадка для сбора. Доступные: " + ", ".join(SITES.keys()),
-    )
-    parser.add_argument(
-        "--persons-only",
-        action="store_true",
-        default=False,
-        help="Синхронизировать только сотрудников, события не собирать",
-    )
-    parser.add_argument(
-        "--events-only",
-        action="store_true",
-        default=False,
-        help="Собирать только события, сотрудников не синхронизировать",
-    )
-    return parser.parse_args()
+# Площадка для сбора. Доступные ключи — см. config.py, раздел SITES.
+RUN_SITE = "site_a"
+
+# True  — синхронизировать сотрудников (parsecnew_persons)
+# False — пропустить
+RUN_PERSONS = True
+
+# True  — собирать события (parsecnew_events)
+# False — пропустить
+RUN_EVENTS = True
 
 
 # %% [markdown]
@@ -708,9 +690,7 @@ def print_summary(con, site_id):
 # %%
 
 def main():
-    args = parse_args()
-
-    site_id  = args.site
+    site_id  = RUN_SITE
     site_cfg = SITES[site_id]
 
     instance_key = site_cfg["parsec_instance"]
@@ -732,10 +712,10 @@ def main():
     try:
         with ParsecClient(instance_cfg, site_id) as client:
 
-            if not args.events_only:
+            if RUN_PERSONS:
                 sync_persons(client, con, site_id, site_cfg)
 
-            if not args.persons_only:
+            if RUN_EVENTS:
                 fetch_and_store_events(
                     client,
                     con,
@@ -751,5 +731,4 @@ def main():
         con.close()
 
 
-if __name__ == "__main__":
-    main()
+main()
