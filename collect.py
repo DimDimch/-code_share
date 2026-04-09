@@ -136,23 +136,22 @@ def _to_int(val):
 
 
 def _parse_dt(val):
-    """Строка даты -> datetime UTC.
-    Parsec через GetEventHistoryResult отдаёт время в часовом поясе сервера
-    (COLLECT["server_tz_offset_hours"]). Присваиваем правильный tzinfo —
-    PostgreSQL TIMESTAMPTZ автоматически сохранит корректный UTC.
+    """Строка даты -> datetime aware (MSK = UTC+3).
+    Parsec возвращает время в московском поясе без указания зоны.
+    Присваиваем UTC+3 — PostgreSQL TIMESTAMPTZ сохранит корректный UTC.
     """
     if not val:
         return None
     val = val.strip()
-    server_tz = timezone(timedelta(hours=COLLECT["server_tz_offset_hours"]))
+    msk = timezone(timedelta(hours=COLLECT["server_tz_offset_hours"]))
     for fmt in (
-        "%d.%m.%Y %H:%M:%S",    # 01.03.2026 3:01:39 — формат Parsec
+        "%d.%m.%Y %H:%M:%S",    # 01.03.2026 6:01:39 — формат Parsec
         "%Y-%m-%dT%H:%M:%SZ",   # ISO 8601 с Z
         "%Y-%m-%dT%H:%M:%S",    # ISO 8601 без Z
     ):
         try:
             dt = datetime.strptime(val, fmt)
-            return dt.replace(tzinfo=server_tz)
+            return dt.replace(tzinfo=msk)
         except ValueError:
             continue
     return None
@@ -376,16 +375,11 @@ def _open_history_session(client, date_from, date_to):
     Открывает сессию истории событий с нужными фильтрами.
     Возвращает GUID сессии истории.
 
-    date_from / date_to передаются в UTC.
-    Сервер Parsec интерпретирует даты в запросе как своё локальное время
-    (server_tz_offset_hours), поэтому сдвигаем границы запроса на +offset,
-    чтобы получить ровно нужный UTC-диапазон.
+    date_from / date_to передаются в московском времени — сервер Parsec
+    работает в том же часовом поясе, сдвиг не нужен.
     """
-    srv_offset    = timedelta(hours=COLLECT["server_tz_offset_hours"])
-    date_from_srv = date_from + srv_offset
-    date_to_srv   = date_to   + srv_offset
-    date_from_str = date_from_srv.strftime("%Y-%m-%dT%H:%M:%SZ")
-    date_to_str   = date_to_srv.strftime("%Y-%m-%dT%H:%M:%SZ")
+    date_from_str = date_from.strftime("%Y-%m-%dT%H:%M:%SZ")
+    date_to_str   = date_to.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     params_xml = (
         "<parameters>"
@@ -503,9 +497,9 @@ def _close_history_session(client, history_session_id):
         print("  Предупреждение: CloseEventHistorySession: " + str(e))
 
 
-def _fetch_one_day(client, con, site_id, day_start, zone_map, ap_map, all_names, tz_offset, chunk_size):
+def _fetch_one_day(client, con, site_id, day_start, zone_map, ap_map, all_names, chunk_size):
     """
-    Собирает события за один календарный день UTC.
+    Собирает события за один календарный день (московское время).
     Возвращает (inserted, skipped).
     """
     day_end = day_start + timedelta(days=1) - timedelta(seconds=1)
@@ -546,16 +540,15 @@ def _fetch_one_day(client, con, site_id, day_start, zone_map, ap_map, all_names,
                 skipped_total += 1
                 continue
 
-            zone_type    = zone_map.get(terr_name)
-            ap_type      = ap_map.get(terr_name, "door")
-            event_dt     = ev["event_dt"]
-            event_dt_msk = event_dt + tz_offset
+            zone_type = zone_map.get(terr_name)
+            ap_type   = ap_map.get(terr_name, "door")
+            event_dt  = ev["event_dt"]
 
             rows_batch.append((
                 site_id,
                 ev["event_guid"],
                 event_dt,
-                event_dt_msk,
+                event_dt,    # event_dt_msk — то же значение, Postgres хранит в UTC
                 t_id,
                 direction,
                 ev["person_id"],
@@ -583,7 +576,6 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
     """
     zone_map, ap_map, all_names = build_zone_map(site_cfg)
     chunk_size = COLLECT["chunk_size"]
-    tz_offset  = timedelta(hours=COLLECT["local_tz_offset_hours"])
 
     # Список дней от date_from до date_to включительно
     days    = []
@@ -606,7 +598,7 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
                 ins, skp = _fetch_one_day(
                     client, con, site_id,
                     day, zone_map, ap_map, all_names,
-                    tz_offset, chunk_size,
+                    chunk_size,
                 )
                 inserted_total += ins
                 skipped_total  += skp
