@@ -78,7 +78,7 @@ WITH
 -- Чтобы использовать календарные сутки — замени 6 на 0 в двух местах ниже.
 params AS (
     SELECT
-        6 AS op_day_start_hour   -- час начала операционного дня (местное время)
+        0 AS op_day_start_hour   -- час начала операционного дня (0 = календарные сутки)
 ),
 
 -- Все события нашей площадки с person_id (без анонимных)
@@ -252,9 +252,9 @@ WHERE s.exit_ts > s.entry_ts;
 CREATE OR REPLACE VIEW v_parsecnew_presence_march AS
 WITH
 
--- PARAM: operational_day_start = 6
+-- PARAM: operational_day_start = 0
 -- Ряд операционных дней марта 2026.
--- Операционный день D: [D 06:00, D+1 06:00)
+-- Операционный день D: [D 00:00, D+1 00:00)
 march_days AS (
     SELECT gs::DATE AS op_date
     FROM generate_series(
@@ -264,9 +264,10 @@ march_days AS (
     ) gs
 ),
 
--- Разбиваем каждую сессию по операционным дням.
--- Для каждого дня берём пересечение сессии с окном [op_date 06:00, op_date+1 06:00).
--- PARAM: operational_day_start — меняй 6 в двух местах ниже.
+-- Разбиваем каждую сессию по календарным суткам.
+-- Для каждого дня берём пересечение сессии с окном [op_date 00:00, op_date+1 00:00).
+-- PARAM: operational_day_start — сейчас 0 (календарные сутки).
+-- Чтобы переключить на 06:00 — замени 0 на 6 в четырёх местах ниже.
 sliced AS (
     SELECT
         s.site_id,
@@ -275,22 +276,20 @@ sliced AS (
         s.comment,
         s.confidence,
         d.op_date                                        AS report_date,
-        -- Начало пересечения: максимум из (начала сессии, начала операционного дня)
+        -- Начало пересечения: максимум из (начала сессии, начала суток)
         GREATEST(
             s.entry_ts,
-            (d.op_date + 6 * INTERVAL '1 hour')
+            (d.op_date + 0 * INTERVAL '1 hour')
         )                                                AS slice_entry,
-        -- Конец пересечения: минимум из (конца сессии, конца операционного дня)
+        -- Конец пересечения: минимум из (конца сессии, конца суток)
         LEAST(
             s.exit_ts,
-            (d.op_date + INTERVAL '1 day' + 6 * INTERVAL '1 hour')
+            (d.op_date + INTERVAL '1 day' + 0 * INTERVAL '1 hour')
         )                                                AS slice_exit
     FROM v_parsecnew_sessions_raw s
     JOIN march_days d
-      -- сессия пересекается с операционным днём D если:
-      -- entry_ts < конец дня D  И  exit_ts > начало дня D
-      ON s.entry_ts < (d.op_date + INTERVAL '1 day' + 6 * INTERVAL '1 hour')
-     AND s.exit_ts  > (d.op_date + 6 * INTERVAL '1 hour')
+      ON s.entry_ts < (d.op_date + INTERVAL '1 day' + 0 * INTERVAL '1 hour')
+     AND s.exit_ts  > (d.op_date + 0 * INTERVAL '1 hour')
     WHERE s.site_id IS NOT NULL
 )
 
