@@ -115,8 +115,9 @@ base_with_lag AS (
 deduped AS (
     SELECT * FROM base_with_lag
     WHERE NOT (
-        direction = 'entry'
-        AND prev_same_dir_ts IS NOT NULL
+        -- дедупликация применяется ко всем направлениям (и entry и exit)
+        -- двойное прикладывание или двойная запись в СКУД
+        prev_same_dir_ts IS NOT NULL
         AND EXTRACT(EPOCH FROM (evt_ts - prev_same_dir_ts)) / 60.0
             < (SELECT t_duplicate_minutes FROM params)
     )
