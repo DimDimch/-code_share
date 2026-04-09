@@ -481,105 +481,120 @@ def _close_history_session(client, history_session_id):
         print("  Предупреждение: CloseEventHistorySession: " + str(e))
 
 
+def _fetch_one_day(client, con, site_id, day_start, zone_map, ap_map, all_names, tz_offset, chunk_size):
+    """
+    Собирает события за один календарный день UTC.
+    Возвращает (inserted, skipped).
+    """
+    day_end = day_start + timedelta(days=1) - timedelta(seconds=1)
+
+    history_session_id = _open_history_session(client, day_start, day_end)
+    total = _get_history_count(client, history_session_id)
+
+    if total == 0:
+        _close_history_session(client, history_session_id)
+        return 0, 0
+
+    inserted_total = 0
+    skipped_total  = 0
+    rows_batch     = []
+
+    for offset in range(0, total, chunk_size):
+        count = min(chunk_size, total - offset)
+        chunk = _get_history_chunk(client, history_session_id, offset, count)
+
+        for obj_el in chunk:
+            ev = _parse_event_object(obj_el)
+
+            if not ev["event_dt"] or not ev["event_guid"]:
+                skipped_total += 1
+                continue
+
+            t_id = ev["transaction_type_id"]
+            if t_id in ENTRY_CODES:
+                direction = "entry"
+            elif t_id in EXIT_CODES:
+                direction = "exit"
+            else:
+                skipped_total += 1
+                continue
+
+            terr_name = ev["territory_name"]
+            if terr_name not in all_names:
+                skipped_total += 1
+                continue
+
+            zone_type    = zone_map.get(terr_name)
+            ap_type      = ap_map.get(terr_name, "door")
+            event_dt     = ev["event_dt"]
+            event_dt_msk = event_dt + tz_offset
+
+            rows_batch.append((
+                site_id,
+                ev["event_guid"],
+                event_dt,
+                event_dt_msk,
+                t_id,
+                direction,
+                ev["person_id"],
+                ev["territory_id"],
+                terr_name,
+                zone_type,
+                ap_type,
+                ev["card_code"],
+            ))
+
+        if len(rows_batch) >= 5000 or (offset + count >= total):
+            inserted_total += _insert_events_batch(con, rows_batch)
+            rows_batch = []
+
+    _close_history_session(client, history_session_id)
+    return inserted_total, skipped_total
+
+
 def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
     """
-    Основная функция сбора событий:
-    1. Открывает сессию истории
-    2. Получает общее число событий
-    3. Загружает чанками с прогрессом
-    4. Фильтрует по зонам площадки
-    5. Вставляет в parsecnew_events
+    Основная функция сбора событий.
+    Итерирует по дням: каждый день — отдельная сессия истории СКУД.
+    Это позволяет избежать таймаута при запросе большого периода.
+    Прогресс-бар — по дням.
     """
     zone_map, ap_map, all_names = build_zone_map(site_cfg)
     chunk_size = COLLECT["chunk_size"]
     tz_offset  = timedelta(hours=COLLECT["local_tz_offset_hours"])
 
-    print("\n[" + site_id + "] Открываю сессию истории событий...")
-    history_session_id = _open_history_session(client, date_from, date_to)
+    # Список дней от date_from до date_to включительно
+    days    = []
+    cur_day = date_from.replace(hour=0, minute=0, second=0, microsecond=0)
+    last_day = date_to.replace(hour=0, minute=0, second=0, microsecond=0)
+    while cur_day <= last_day:
+        days.append(cur_day)
+        cur_day = cur_day + timedelta(days=1)
 
-    total = _get_history_count(client, history_session_id)
-    print("[" + site_id + "] Событий в СКУД за период: " + str(total))
-
-    if total == 0:
-        _close_history_session(client, history_session_id)
-        print("[" + site_id + "] Событий нет. Завершено.")
-        return 0
+    print("\n[" + site_id + "] Сбор событий по дням: " + str(len(days)) + " дней")
 
     inserted_total = 0
     skipped_total  = 0
 
-    rows_batch = []
-
-    with tqdm(
-        total=total,
-        desc="[" + site_id + "] события",
-        unit="событий",
-        ncols=80,
-    ) as pbar:
-
-        for offset in range(0, total, chunk_size):
-            count = min(chunk_size, total - offset)
-            chunk = _get_history_chunk(client, history_session_id, offset, count)
-
-            for obj_el in chunk:
-                ev = _parse_event_object(obj_el)
-
-                # Пропускаем если нет времени или человека
-                if not ev["event_dt"] or not ev["event_guid"]:
-                    skipped_total += 1
-                    continue
-
-                # Определяем direction
-                t_id = ev["transaction_type_id"]
-                if t_id in ENTRY_CODES:
-                    direction = "entry"
-                elif t_id in EXIT_CODES:
-                    direction = "exit"
-                else:
-                    skipped_total += 1
-                    continue
-
-                # Фильтруем: только точки прохода нашей площадки
-                terr_name = ev["territory_name"]
-                if terr_name not in all_names:
-                    skipped_total += 1
-                    continue
-
-                zone_type  = zone_map.get(terr_name)
-                ap_type    = ap_map.get(terr_name, "door")
-
-                event_dt     = ev["event_dt"]
-                event_dt_msk = event_dt + tz_offset
-
-                rows_batch.append((
-                    site_id,
-                    ev["event_guid"],
-                    event_dt,
-                    event_dt_msk,
-                    t_id,
-                    direction,
-                    ev["person_id"],
-                    ev["territory_id"],
-                    terr_name,
-                    zone_type,
-                    ap_type,
-                    ev["card_code"],
-                ))
-
-            # Сбрасываем батч каждые ~5000 строк или в конце
-            if len(rows_batch) >= 5000 or (offset + count >= total):
-                n = _insert_events_batch(con, rows_batch)
-                inserted_total += n
-                rows_batch = []
-
-            pbar.update(len(chunk))
-
-    _close_history_session(client, history_session_id)
+    with tqdm(days, desc="[" + site_id + "] дни", unit="день", ncols=80) as pbar:
+        for day in pbar:
+            day_str = str(day.date())
+            pbar.set_postfix_str(day_str)
+            try:
+                ins, skp = _fetch_one_day(
+                    client, con, site_id,
+                    day, zone_map, ap_map, all_names,
+                    tz_offset, chunk_size,
+                )
+                inserted_total += ins
+                skipped_total  += skp
+            except Exception as e:
+                tqdm.write("  [" + site_id + "] ОШИБКА " + day_str + ": " + str(e))
 
     print(
         "[" + site_id + "] Готово."
         + " Вставлено: " + str(inserted_total)
-        + " | Пропущено (не наша зона / нет данных): " + str(skipped_total)
+        + " | Пропущено: " + str(skipped_total)
     )
     return inserted_total
 
