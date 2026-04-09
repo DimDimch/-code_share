@@ -235,74 +235,122 @@ WHERE s.exit_ts > s.entry_ts;
 -- =============================================================================
 -- 3. Итоговая витрина: сотрудник — дата — зона — время пребывания
 --
+-- Многодневные сессии разбиваются по календарным суткам:
+-- для каждого дня считается только та часть сессии, которая в него попадает.
+--
+-- Граница суток = операционный день (PARAM: operational_day_start = 6 часов).
+-- День D: [D 06:00, D+1 06:00)
+--
 -- Формат выгрузки:
 --   person_id, full_name, tab_number, department_name,
---   session_date, zone_type,
---   total_minutes (сумма по всем сессиям зоны за день),
+--   report_date, zone_type,
+--   total_minutes, total_hours,
 --   first_entry, last_exit,
---   has_night_open (флаг: хотя бы одна сессия закрыта до конца дня),
---   has_night_start (флаг: хотя бы одна сессия открыта от начала дня),
---   comment (агрегированный),
---   confidence_min (худший уровень достоверности за день)
+--   has_open_end, has_open_start, comment, confidence
 -- =============================================================================
 
 CREATE OR REPLACE VIEW v_parsecnew_presence_march AS
+WITH
+
+-- PARAM: operational_day_start = 6
+-- Ряд операционных дней марта 2026.
+-- Операционный день D: [D 06:00, D+1 06:00)
+march_days AS (
+    SELECT gs::DATE AS op_date
+    FROM generate_series(
+        '2026-03-01'::DATE,
+        '2026-03-31'::DATE,
+        INTERVAL '1 day'
+    ) gs
+),
+
+-- Разбиваем каждую сессию по операционным дням.
+-- Для каждого дня берём пересечение сессии с окном [op_date 06:00, op_date+1 06:00).
+-- PARAM: operational_day_start — меняй 6 в двух местах ниже.
+sliced AS (
+    SELECT
+        s.site_id,
+        s.person_id,
+        s.zone_type,
+        s.comment,
+        s.confidence,
+        d.op_date                                        AS report_date,
+        -- Начало пересечения: максимум из (начала сессии, начала операционного дня)
+        GREATEST(
+            s.entry_ts,
+            (d.op_date + 6 * INTERVAL '1 hour')
+        )                                                AS slice_entry,
+        -- Конец пересечения: минимум из (конца сессии, конца операционного дня)
+        LEAST(
+            s.exit_ts,
+            (d.op_date + INTERVAL '1 day' + 6 * INTERVAL '1 hour')
+        )                                                AS slice_exit
+    FROM v_parsecnew_sessions_raw s
+    JOIN march_days d
+      -- сессия пересекается с операционным днём D если:
+      -- entry_ts < конец дня D  И  exit_ts > начало дня D
+      ON s.entry_ts < (d.op_date + INTERVAL '1 day' + 6 * INTERVAL '1 hour')
+     AND s.exit_ts  > (d.op_date + 6 * INTERVAL '1 hour')
+    WHERE s.site_id IS NOT NULL
+)
+
 SELECT
-    s.site_id,
-    s.person_id,
-    -- ФИО из справочника
+    sl.site_id,
+    sl.person_id,
     COALESCE(p.last_name, '') || ' ' ||
     COALESCE(p.first_name, '') || ' ' ||
-    COALESCE(p.middle_name, '')                         AS full_name,
+    COALESCE(p.middle_name, '')                          AS full_name,
     p.tab_number,
     p.department_name,
-    s.session_date                                      AS report_date,
-    s.zone_type,
-    -- Суммарное время в зоне за день, минуты
-    SUM(s.duration_minutes)                             AS total_minutes,
-    -- Суммарное время в зоне за день, часы (для удобства чтения)
-    ROUND(SUM(s.duration_minutes) / 60.0, 2)           AS total_hours,
-    -- Первый вход и последний выход за день по зоне
-    MIN(s.entry_ts)                                     AS first_entry,
-    MAX(s.exit_ts)                                      AS last_exit,
-    -- Счётчики сессий
-    COUNT(*)                                            AS sessions_count,
-    -- Флаги ночных смен
-    BOOL_OR(s.comment = 'проставлено до конца дня')    AS has_open_end,
-    BOOL_OR(s.comment = 'проставлено от начала дня')   AS has_open_start,
-    -- Комментарий — собираем уникальные через string_agg
+    sl.report_date,
+    sl.zone_type,
+    -- Суммарное время в зоне за операционный день, минуты
+    ROUND(
+        SUM(EXTRACT(EPOCH FROM (sl.slice_exit - sl.slice_entry)) / 60.0),
+        1
+    )                                                    AS total_minutes,
+    -- То же в часах
+    ROUND(
+        SUM(EXTRACT(EPOCH FROM (sl.slice_exit - sl.slice_entry)) / 3600.0),
+        2
+    )                                                    AS total_hours,
+    -- Первый вход и последний выход в рамках этого дня
+    MIN(sl.slice_entry)                                  AS first_entry,
+    MAX(sl.slice_exit)                                   AS last_exit,
+    COUNT(*)                                             AS sessions_count,
+    -- Флаги ночных смен (наследуем из sessions_raw)
+    BOOL_OR(sl.comment = 'проставлено до конца дня')    AS has_open_end,
+    BOOL_OR(sl.comment = 'проставлено от начала дня')   AS has_open_start,
     NULLIF(
-        STRING_AGG(DISTINCT s.comment, '; ')
-        FILTER (WHERE s.comment IS NOT NULL),
+        STRING_AGG(DISTINCT sl.comment, '; ')
+        FILTER (WHERE sl.comment IS NOT NULL),
         ''
-    )                                                   AS comment,
-    -- Уровень достоверности: берём худший (LOW < HIGH)
+    )                                                    AS comment,
     CASE
-        WHEN BOOL_OR(s.confidence = 'LOW')  THEN 'LOW'
+        WHEN BOOL_OR(sl.confidence = 'LOW') THEN 'LOW'
         ELSE 'HIGH'
-    END                                                 AS confidence
-FROM v_parsecnew_sessions_raw s
+    END                                                  AS confidence
+FROM sliced sl
 LEFT JOIN parsecnew_persons p
-    ON  p.site_id   = s.site_id
-    AND p.person_id = s.person_id
--- Только март 2026
-WHERE s.session_date >= '2026-03-01'
-  AND s.session_date <= '2026-03-31'
+    ON  p.site_id   = sl.site_id
+    AND p.person_id = sl.person_id
+-- Только строки с положительной длительностью
+WHERE sl.slice_exit > sl.slice_entry
 GROUP BY
-    s.site_id,
-    s.person_id,
+    sl.site_id,
+    sl.person_id,
     p.last_name,
     p.first_name,
     p.middle_name,
     p.tab_number,
     p.department_name,
-    s.session_date,
-    s.zone_type
+    sl.report_date,
+    sl.zone_type
 ORDER BY
-    s.site_id,
-    s.session_date,
+    sl.site_id,
+    sl.report_date,
     full_name,
-    s.zone_type;
+    sl.zone_type;
 
 
 -- =============================================================================
