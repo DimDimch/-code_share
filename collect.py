@@ -53,12 +53,13 @@ EXIT_CODES  = {590145, 590153, 590146, 590244, 590245}
 
 # GUIDы полей, которые запрашиваем из истории событий
 EVENT_FIELD_GUIDS = [
-    "9f7a30e6-c9ed-4e62-83e3-59032a0f8d27",  # event_guid
-    "2c5ee108-28e3-4dcc-8c95-7f3222d8e67f",  # event_dt
-    "57ca38e4-ed6f-4d12-adcb-2faa16f950d7",  # transaction_type_id
-    "7c6d82a0-c8c8-495b-9728-357807193d23",  # person_id
-    "42dab9c6-5d30-4030-8ccd-2cad6fcbc5f2",  # territory_ids (массив)
-    "0de358e0-c91b-4333-b902-000000000005",  # card_code
+    "9f7a30e6-c9ed-4e62-83e3-59032a0f8d27",  # [0] event_guid
+    "2c5ee108-28e3-4dcc-8c95-7f3222d8e67f",  # [1] event_dt
+    "57ca38e4-ed6f-4d12-adcb-2faa16f950d7",  # [2] transaction_type_id
+    "7c6d82a0-c8c8-495b-9728-357807193d23",  # [3] person_id
+    "42dab9c6-5d30-4030-8ccd-2cad6fcbc5f2",  # [4] territory_ids (массив guid)
+    "0de358e0-c91b-4333-b902-000000000005",  # [5] card_code
+    "633904b5-971b-4751-96a0-92dc03d5f616",  # [6] territory_name (строка)
 ]
 
 
@@ -449,8 +450,9 @@ def _parse_event_object(obj_el):
     raw_dt     = _val(1)
     raw_type   = _val(2)
     raw_person = _val(3)
-    raw_terr   = _val(4)   # может быть список
+    raw_terr   = _val(4)   # массив guid
     raw_card   = _val(5)
+    raw_tname  = _val(6)   # territory_name — строка, приходит напрямую
 
     # territory_id — берём первый из массива (обычно он один)
     if isinstance(raw_terr, list):
@@ -464,6 +466,7 @@ def _parse_event_object(obj_el):
         "transaction_type_id": _to_int(raw_type),
         "person_id":           _to_uuid(raw_person),
         "territory_id":        territory_id,
+        "territory_name":      raw_tname or None,
         "card_code":           raw_card,
     }
 
@@ -502,10 +505,6 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
         print("[" + site_id + "] Событий нет. Завершено.")
         return 0
 
-    # Получаем справочник территорий из БД (если уже был другой сбор)
-    # и из СКУД напрямую через GetTerritoriesHierarhy
-    terr_name_map = _load_territory_names(client)
-
     inserted_total = 0
     skipped_total  = 0
 
@@ -540,11 +539,8 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
                     skipped_total += 1
                     continue
 
-                # Разрешаем название территории
-                terr_id   = ev["territory_id"]
-                terr_name = terr_name_map.get(terr_id) if terr_id else None
-
                 # Фильтруем: только точки прохода нашей площадки
+                terr_name = ev["territory_name"]
                 if terr_name not in all_names:
                     skipped_total += 1
                     continue
@@ -563,7 +559,7 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
                     t_id,
                     direction,
                     ev["person_id"],
-                    terr_id,
+                    ev["territory_id"],
                     terr_name,
                     zone_type,
                     ap_type,
@@ -586,24 +582,6 @@ def fetch_and_store_events(client, con, site_id, site_cfg, date_from, date_to):
         + " | Пропущено (не наша зона / нет данных): " + str(skipped_total)
     )
     return inserted_total
-
-
-def _load_territory_names(client):
-    """
-    Загружает словарь territory_id (UUID) -> territory_name из СКУД.
-    Нужен для обогащения событий именем территории при вставке.
-    """
-    terr_map = {}
-    resp      = client.call("GetTerritoriesHierarhy")
-    result_el = _child(resp, "GetTerritoriesHierarhyResult")
-    if result_el is None:
-        return terr_map
-    for t in result_el:
-        uid  = _to_uuid(_text(t, "ID"))
-        name = _text(t, "NAME")
-        if uid and name:
-            terr_map[uid] = name
-    return terr_map
 
 
 def _insert_events_batch(con, rows):
