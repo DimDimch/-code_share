@@ -266,10 +266,12 @@ march_days AS (
     ) gs
 ),
 
--- Разбиваем каждую сессию по календарным суткам.
--- Для каждого дня берём пересечение сессии с окном [op_date 00:00, op_date+1 00:00).
--- PARAM: operational_day_start — сейчас 0 (календарные сутки).
--- Чтобы переключить на 06:00 — замени 0 на 6 в четырёх местах ниже.
+-- Разбиваем каждую сессию по календарным суткам (00:00 MSK — 00:00 MSK).
+-- AT TIME ZONE 'Europe/Moscow' обязателен: без него DATE+INTERVAL даёт TIMESTAMP
+-- без часового пояса, который Postgres сравнивает с TIMESTAMPTZ через UTC,
+-- и полночь MSK (00:00+03 = 21:00 UTC предыдущего дня) съезжает на 3 часа.
+-- PARAM: чтобы переключить на 06:00 MSK — замени INTERVAL '0 hours' на INTERVAL '6 hours'
+--        в четырёх местах ниже.
 sliced AS (
     SELECT
         s.site_id,
@@ -277,21 +279,21 @@ sliced AS (
         s.zone_type,
         s.comment,
         s.confidence,
-        d.op_date                                        AS report_date,
-        -- Начало пересечения: максимум из (начала сессии, начала суток)
+        d.op_date                                                        AS report_date,
+        -- Начало пересечения: максимум из (начала сессии, начала суток MSK)
         GREATEST(
             s.entry_ts,
-            (d.op_date + 0 * INTERVAL '1 hour')
-        )                                                AS slice_entry,
-        -- Конец пересечения: минимум из (конца сессии, конца суток)
+            (d.op_date::TIMESTAMP + INTERVAL '0 hours') AT TIME ZONE 'Europe/Moscow'
+        )                                                                AS slice_entry,
+        -- Конец пересечения: минимум из (конца сессии, конца суток MSK)
         LEAST(
             s.exit_ts,
-            (d.op_date + INTERVAL '1 day' + 0 * INTERVAL '1 hour')
-        )                                                AS slice_exit
+            (d.op_date::TIMESTAMP + INTERVAL '1 day' + INTERVAL '0 hours') AT TIME ZONE 'Europe/Moscow'
+        )                                                                AS slice_exit
     FROM v_parsecnew_sessions_raw s
     JOIN march_days d
-      ON s.entry_ts < (d.op_date + INTERVAL '1 day' + 0 * INTERVAL '1 hour')
-     AND s.exit_ts  > (d.op_date + 0 * INTERVAL '1 hour')
+      ON s.entry_ts < (d.op_date::TIMESTAMP + INTERVAL '1 day' + INTERVAL '0 hours') AT TIME ZONE 'Europe/Moscow'
+     AND s.exit_ts  > (d.op_date::TIMESTAMP + INTERVAL '0 hours') AT TIME ZONE 'Europe/Moscow'
     WHERE s.site_id IS NOT NULL
 )
 
