@@ -136,18 +136,23 @@ def _to_int(val):
 
 
 def _parse_dt(val):
-    """ISO 8601 строка → datetime UTC. Parsec отдаёт UTC."""
+    """Строка даты -> datetime UTC.
+    Parsec через GetEventHistoryResult отдаёт время в часовом поясе сервера
+    (COLLECT["server_tz_offset_hours"]). Присваиваем правильный tzinfo —
+    PostgreSQL TIMESTAMPTZ автоматически сохранит корректный UTC.
+    """
     if not val:
         return None
     val = val.strip()
-    # Убираем дробные секунды для единообразия
-    if "." in val:
-        val = val[:val.index(".")] + "Z" if val.endswith("Z") else val[:val.index(".")]
-    # Добавляем tzinfo если нет
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S"):
+    server_tz = timezone(timedelta(hours=COLLECT["server_tz_offset_hours"]))
+    for fmt in (
+        "%d.%m.%Y %H:%M:%S",    # 01.03.2026 3:01:39 — формат Parsec
+        "%Y-%m-%dT%H:%M:%SZ",   # ISO 8601 с Z
+        "%Y-%m-%dT%H:%M:%S",    # ISO 8601 без Z
+    ):
         try:
             dt = datetime.strptime(val, fmt)
-            return dt.replace(tzinfo=timezone.utc)
+            return dt.replace(tzinfo=server_tz)
         except ValueError:
             continue
     return None
@@ -268,6 +273,7 @@ def build_zone_map(site_cfg):
 def sync_persons(client, con, site_id, site_cfg):
     """
     Загружает полную иерархию подразделений с сотрудниками из СКУД.
+    Один запрос GetOrgUnitsHierarhyWithPersons, два прохода по результату в памяти.
     Сохраняет в parsecnew_persons (upsert).
     """
     print("\n[" + site_id + "] Синхронизация сотрудников...")
@@ -278,33 +284,32 @@ def sync_persons(client, con, site_id, site_cfg):
         print("  Пустой ответ.")
         return 0
 
-    # Сначала собираем справочник подразделений id -> name
+    # Сохраняем все элементы в список — один запрос, два прохода в памяти
+    all_objects = list(result_el)
+
+    # Проход 1: собираем справочник подразделений id -> name
+    # OrgUnit определяем по отсутствию поля ORG_ID (у Person оно всегда есть)
     org_map = {}
-    for obj in result_el:
-        tab = _text(obj, "TAB_NUM")
-        if tab is None:
-            # Это OrgUnit, не Person
-            uid  = _to_uuid(_text(obj, "ID"))
-            name = _text(obj, "NAME")
-            if uid:
-                org_map[uid] = name
+    for obj in all_objects:
+        if _text(obj, "ORG_ID") is not None:
+            continue  # Person — пропускаем
+        uid  = _to_uuid(_text(obj, "ID"))
+        name = _text(obj, "NAME")
+        if uid:
+            org_map[uid] = name
 
-    # Второй проход — сотрудники
-    resp      = client.call("GetOrgUnitsHierarhyWithPersons")
-    result_el = _child(resp, "GetOrgUnitsHierarhyWithPersonsResult")
-
+    # Проход 2: сотрудники — все у кого есть ORG_ID, TAB_NUM может быть пустым
     rows    = []
     now_utc = datetime.now(timezone.utc)
 
-    for obj in result_el:
-        tab = _text(obj, "TAB_NUM")
-        if tab is None:
+    for obj in all_objects:
+        org_id = _to_uuid(_text(obj, "ORG_ID"))
+        if org_id is None:
             continue  # OrgUnit
         person_id = _to_uuid(_text(obj, "ID"))
         if not person_id:
             continue
-        org_id   = _to_uuid(_text(obj, "ORG_ID"))
-        dept_name = org_map.get(org_id, None) if org_id else None
+        dept_name = org_map.get(org_id)
 
         rows.append((
             site_id,
@@ -312,7 +317,7 @@ def sync_persons(client, con, site_id, site_cfg):
             _text(obj, "LAST_NAME"),
             _text(obj, "FIRST_NAME"),
             _text(obj, "MIDDLE_NAME"),
-            tab,
+            _text(obj, "TAB_NUM"),   # может быть None — это нормально
             dept_name,
             now_utc,
         ))
@@ -370,9 +375,17 @@ def _open_history_session(client, date_from, date_to):
     """
     Открывает сессию истории событий с нужными фильтрами.
     Возвращает GUID сессии истории.
+
+    date_from / date_to передаются в UTC.
+    Сервер Parsec интерпретирует даты в запросе как своё локальное время
+    (server_tz_offset_hours), поэтому сдвигаем границы запроса на +offset,
+    чтобы получить ровно нужный UTC-диапазон.
     """
-    date_from_str = date_from.strftime("%Y-%m-%dT%H:%M:%SZ")
-    date_to_str   = date_to.strftime("%Y-%m-%dT%H:%M:%SZ")
+    srv_offset    = timedelta(hours=COLLECT["server_tz_offset_hours"])
+    date_from_srv = date_from + srv_offset
+    date_to_srv   = date_to   + srv_offset
+    date_from_str = date_from_srv.strftime("%Y-%m-%dT%H:%M:%SZ")
+    date_to_str   = date_to_srv.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     params_xml = (
         "<parameters>"
